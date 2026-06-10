@@ -80,6 +80,8 @@ const App = () => {
     const [form, setForm] = useState(initialFormState);
     const [saveMessage, setSaveMessage] = useState('Gunakan form untuk menambahkan usaha baru.');
     const [showModal, setShowModal] = useState(false);
+    const [isGeocodingLoading, setIsGeocodingLoading] = useState(false);
+    const [isNearbyLoading, setIsNearbyLoading] = useState(false);
 
     const mapRef = useRef(null);
     const mapInstance = useRef(null);
@@ -188,6 +190,7 @@ const App = () => {
         }
 
         setStatusText('Mencari lokasi...');
+        setIsGeocodingLoading(true);
 
         try {
             const results = await fetchJson(`${api.geocode}?q=${encodeURIComponent(searchTerm.trim())}`);
@@ -211,6 +214,8 @@ const App = () => {
             }
         } catch (error) {
             setStatusText(error.message);
+        } finally {
+            setIsGeocodingLoading(false);
         }
     };
 
@@ -224,6 +229,7 @@ const App = () => {
         }
 
         setNearbySummary('Mengambil usaha sekitar dari Overpass API...');
+        setIsNearbyLoading(true);
         nearbyLayer.current?.clearLayers();
 
         try {
@@ -256,6 +262,8 @@ const App = () => {
         } catch (error) {
             setNearbySummary(error.message || 'Gagal memuat data usaha dari Overpass API.');
             console.error(error);
+        } finally {
+            setIsNearbyLoading(false);
         }
     };
 
@@ -490,8 +498,19 @@ const App = () => {
                     )
                 )
             )
-        ,
-        showModal ? React.createElement(
+            ,
+            (isGeocodingLoading || isNearbyLoading) ? React.createElement(
+                'div',
+                { className: 'fixed inset-0 z-[99998] flex items-center justify-center' },
+                React.createElement('div', { className: 'absolute inset-0 bg-black/30' }),
+                React.createElement(
+                    'div',
+                    { className: 'relative z-10 flex flex-col items-center gap-4 rounded-xl bg-white/90 px-6 py-6 backdrop-blur-sm' },
+                    React.createElement('div', { className: 'w-16 h-16 border-4 border-sky-400 border-t-transparent rounded-full animate-spin' }),
+                    React.createElement('div', { className: 'text-sm font-medium text-slate-900' }, isGeocodingLoading ? 'Mencari lokasi...' : 'Mengambil usaha sekitar...')
+                )
+            ) : null,
+            showModal ? React.createElement(
             'div',
             { className: 'fixed inset-0 z-[99999] flex items-center justify-center' },
             React.createElement('div', { className: 'absolute inset-0 bg-black/40', onClick: () => setShowModal(false) }),
