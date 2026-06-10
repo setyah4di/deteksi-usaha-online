@@ -71,14 +71,21 @@ class GisController extends Controller
         $query .= "way(around:$radius,$lat,$lon)[amenity=restaurant];";
         $query .= ");out center tags;";
 
-        $response = Http::withHeaders([
-            'User-Agent' => 'UsahaOnlineDetector/1.0 (+https://example.com)',
-        ])->timeout(40)->asForm()->post('https://overpass-api.de/api/interpreter', [
-            'data' => $query,
-        ]);
+        try {
+            $response = Http::withHeaders([
+                'User-Agent' => 'UsahaOnlineDetector/1.0 (+https://example.com)',
+            ])->timeout(40)->asForm()->post('https://overpass-api.de/api/interpreter', [
+                'data' => $query,
+            ]);
+        } catch (\Exception $e) {
+            return Response::json(['error' => 'Gagal mengambil data dari Overpass API.', 'detail' => $e->getMessage()], 500);
+        }
 
         if ($response->failed()) {
-            return Response::json(['error' => 'Gagal mengambil data dari Overpass API.'], 500);
+            $status = $response->status();
+            $body = (string) $response->body();
+            $excerpt = strlen($body) > 512 ? substr($body, 0, 512) . '...' : $body;
+            return Response::json(['error' => 'Gagal mengambil data dari Overpass API.', 'status' => $status, 'response_excerpt' => $excerpt], 500);
         }
 
         $elements = $response->json('elements', []);

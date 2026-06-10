@@ -4,6 +4,7 @@ use App\Http\Controllers\GisController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [GisController::class, 'index']);
+Route::view('/add-business', 'add_business');
 Route::get('/api/geocode', [GisController::class, 'geocode']);
 Route::get('/api/nearby', [GisController::class, 'nearby']);
 Route::get('/api/businesses', [GisController::class, 'list']);

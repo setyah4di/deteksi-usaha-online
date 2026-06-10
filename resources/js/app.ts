@@ -6,12 +6,27 @@ import '../css/app.css';
 import iconUrl from 'leaflet/dist/images/marker-icon.png';
 import iconRetinaUrl from 'leaflet/dist/images/marker-icon-2x.png';
 import shadowUrl from 'leaflet/dist/images/marker-shadow.png';
+import BusinessForm from './components/BusinessForm';
 
 L.Icon.Default.mergeOptions({
     iconRetinaUrl,
     iconUrl,
     shadowUrl,
 });
+
+// Ensure Leaflet markers always use the resolved asset URLs from the bundler
+const DefaultIcon = L.icon({
+    iconUrl: iconUrl,
+    iconRetinaUrl: iconRetinaUrl,
+    shadowUrl: shadowUrl,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    tooltipAnchor: [16, -28],
+    shadowSize: [41, 41],
+});
+
+L.Marker.prototype.options.icon = DefaultIcon;
 
 const api = {
     geocode: '/api/geocode',
@@ -64,6 +79,7 @@ const App = () => {
     const [stats, setStats] = useState({ total: 0, online_presence: 0, average_score: 0, levels: [] });
     const [form, setForm] = useState(initialFormState);
     const [saveMessage, setSaveMessage] = useState('Gunakan form untuk menambahkan usaha baru.');
+    const [showModal, setShowModal] = useState(false);
 
     const mapRef = useRef(null);
     const mapInstance = useRef(null);
@@ -103,6 +119,13 @@ const App = () => {
             mapInstance.current?.remove();
         };
     }, []);
+
+    useEffect(() => {
+        // prevent background scroll when modal open
+        const prev = document.body.style.overflow;
+        document.body.style.overflow = showModal ? 'hidden' : prev;
+        return () => { document.body.style.overflow = prev; };
+    }, [showModal]);
 
     useEffect(() => {
         const loadInitial = async () => {
@@ -150,6 +173,12 @@ const App = () => {
         } catch (error) {
             console.warn(error);
         }
+    };
+
+    const handleFormSaved = async () => {
+        setShowModal(false);
+        setSaveMessage('Usaha berhasil disimpan.');
+        await Promise.all([loadStats(), loadSavedBusinesses()]);
     };
 
     const searchLocation = async () => {
@@ -277,12 +306,11 @@ const App = () => {
                     React.createElement(
                         'div',
                         { className: 'space-y-3' },
-                        React.createElement('span', { className: 'inline-flex rounded-full bg-sky-100 px-4 py-2 text-sm font-semibold text-sky-700' }, 'GIS + React + Tailwind'),
                         React.createElement(
                             'div',
                             null,
-                            React.createElement('h1', { className: 'text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl' }, 'Sistem Pemetaan dan Deteksi Usaha Online'),
-                            React.createElement('p', { className: 'mt-3 max-w-2xl text-slate-600' }, 'Cari lokasi, temukan usaha sekitar, pantau kehadiran digital, dan simpan data usaha menggunakan React serta Tailwind CSS.')
+                            React.createElement('h1', { className: 'text-3xl justify-center font-semibold tracking-tight text-slate-950 sm:text-4xl' }, 'Sistem Pemetaan dan Deteksi Usaha Online'),
+                            React.createElement('p', { className: 'mt-3 max-w-2xl text-slate-600' }, 'Cari lokasi, temukan usaha sekitar, pantau kehadiran digital, dan simpan data usaha.')
                         )
                     ),
                     React.createElement('a', { 
@@ -356,7 +384,7 @@ const App = () => {
                     React.createElement(
                         'div',
                         { className: 'rounded-[32px] bg-white p-8 shadow-lg shadow-slate-200/70 ring-1 ring-slate-200' },
-                        React.createElement('div', { id: 'map', ref: mapRef, className: 'h-[520px] w-full rounded-[28px] border border-slate-200' })
+                        React.createElement('div', { id: 'map', ref: mapRef, className: 'h-[520px] w-full rounded-[28px] border border-slate-200 relative z-0' })
                     ),
                     React.createElement(
                         'div',
@@ -428,77 +456,10 @@ const App = () => {
                         'section',
                         { className: 'rounded-[32px] bg-white p-8 shadow-lg shadow-slate-200/70 ring-1 ring-slate-200' },
                         React.createElement('h2', { className: 'text-xl font-semibold text-slate-950' }, 'Input Usaha Baru'),
-                        React.createElement(
-                            'form',
-                            { onSubmit: saveBusiness, className: 'mt-6 space-y-4' },
-                            [
-                                { label: 'Nama usaha', key: 'name', type: 'text', placeholder: 'Toko Sepatu XYZ' },
-                                { label: 'Alamat', key: 'address', type: 'textarea', placeholder: 'Alamat usaha' },
-                                { label: 'Website', key: 'website', type: 'text', placeholder: 'https://example.com' },
-                                { label: 'Instagram', key: 'instagram', type: 'text', placeholder: 'instagram.com/username' },
-                                { label: 'Facebook', key: 'facebook', type: 'text', placeholder: 'facebook.com/username' },
-                                { label: 'WhatsApp', key: 'whatsapp', type: 'text', placeholder: '+628123456789' },
-                                { label: 'Shopee', key: 'shopee', type: 'text', placeholder: 'shopee.co.id/username' },
-                                { label: 'Tokopedia', key: 'tokopedia', type: 'text', placeholder: 'tokopedia.com/username' },
-                                { label: 'TikTok', key: 'tiktok', type: 'text', placeholder: 'tiktok.com/@username' },
-                            ].map(({ label, key, type, placeholder }) =>
-                                React.createElement(
-                                    'div',
-                                    { key, className: 'grid gap-2' },
-                                    React.createElement('label', { className: 'text-sm font-semibold text-slate-700' }, label),
-                                    type === 'textarea'
-                                        ? React.createElement('textarea', {
-                                            rows: 3,
-                                            value: form[key],
-                                            onChange: (e) => handleInputChange(key, e.target.value),
-                                            placeholder,
-                                            className: 'rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-100',
-                                        })
-                                        : React.createElement('input', {
-                                            type: 'text',
-                                            value: form[key],
-                                            onChange: (e) => handleInputChange(key, e.target.value),
-                                            placeholder,
-                                            className: 'rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-100',
-                                        })
-                                )
-                            ),
-                            React.createElement(
-                                'div',
-                                { className: 'grid gap-4 sm:grid-cols-2' },
-                                React.createElement(
-                                    'div',
-                                    { className: 'grid gap-2' },
-                                    React.createElement('label', { className: 'text-sm font-semibold text-slate-700' }, 'Latitude'),
-                                    React.createElement('input', {
-                                        type: 'number',
-                                        step: '0.000001',
-                                        value: form.latitude,
-                                        onChange: (e) => handleInputChange('latitude', e.target.value),
-                                        placeholder: '-6.200000',
-                                        className: 'rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-100',
-                                    })
-                                ),
-                                React.createElement(
-                                    'div',
-                                    { className: 'grid gap-2' },
-                                    React.createElement('label', { className: 'text-sm font-semibold text-slate-700' }, 'Longitude'),
-                                    React.createElement('input', {
-                                        type: 'number',
-                                        step: '0.000001',
-                                        value: form.longitude,
-                                        onChange: (e) => handleInputChange('longitude', e.target.value),
-                                        placeholder: '106.816666',
-                                        className: 'rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-100',
-                                    })
-                                )
-                            ),
-                            React.createElement('button', { 
-                                type: 'submit', 
-                                className: 'w-full rounded-2xl bg-sky-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-700' 
-                            }, 'Simpan Usaha')
-                        ),
-                        React.createElement('p', { className: 'mt-4 rounded-3xl bg-slate-100 px-4 py-4 text-sm text-slate-600' }, saveMessage)
+                        React.createElement('p', { className: 'mt-3 text-sm text-slate-600' }, 'Tambahkan usaha baru melalui modal.'),
+                        React.createElement('div', { className: 'mt-4 flex gap-3 justify-end' },
+                            React.createElement('button', { onClick: () => setShowModal(true), className: 'rounded-2xl bg-sky-600 px-4 py-2 text-white' }, 'Tambah Usaha')
+                        )
                     ),
                     React.createElement(
                         'section',
@@ -529,8 +490,16 @@ const App = () => {
                     )
                 )
             )
-        )
-    );
+        ,
+        showModal ? React.createElement(
+            'div',
+            { className: 'fixed inset-0 z-[99999] flex items-center justify-center' },
+            React.createElement('div', { className: 'absolute inset-0 bg-black/40', onClick: () => setShowModal(false) }),
+            React.createElement('div', { className: 'relative z-[100000] w-full max-w-2xl p-6 bg-white rounded-2xl shadow-lg' },
+                React.createElement(BusinessForm, { onSaved: handleFormSaved, onCancel: () => setShowModal(false) })
+            )
+        ) : null
+    ));
 };
 
 const root = ReactDOM.createRoot(document.getElementById('app'));
