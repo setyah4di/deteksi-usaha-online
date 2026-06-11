@@ -6,6 +6,7 @@ import '../css/app.css';
 import iconUrl from 'leaflet/dist/images/marker-icon.png';
 import iconRetinaUrl from 'leaflet/dist/images/marker-icon-2x.png';
 import shadowUrl from 'leaflet/dist/images/marker-shadow.png';
+import * as XLSX from 'xlsx';
 import BusinessForm from './components/BusinessForm';
 
 L.Icon.Default.mergeOptions({ iconRetinaUrl, iconUrl, shadowUrl });
@@ -73,6 +74,64 @@ const StatCard = ({ label, value, dark = false }: { label: string; value: string
         React.createElement('p', { className: 'text-3xl font-bold tabular-nums' }, value)
     );
 
+// ─── Export Excel ─────────────────────────────────────────────────────────────
+
+const exportToExcel = (items: BusinessItem[], filename: string, sheetLabel: string) => {
+    const rows = items.map((item) => ({
+        'Nama Usaha'      : item.name,
+        'Alamat'          : item.address || '',
+        'Telepon'         : item.phone || '',
+        'Email'           : item.email || '',
+        'Website'         : item.website || '',
+        'Instagram'       : item.instagram || '',
+        'Facebook'        : item.facebook || '',
+        'WhatsApp'        : item.whatsapp || '',
+        'Shopee'          : item.shopee || '',
+        'Tokopedia'       : item.tokopedia || '',
+        'TikTok'          : item.tiktok || '',
+        'Rating Google'   : item.rating ?? '',
+        'Total Ulasan'    : item.total_reviews ?? '',
+        'Skor Digital'    : item.digital_score,
+        'Level Digital'   : item.digital_level,
+        'Latitude'        : item.latitude ?? '',
+        'Longitude'       : item.longitude ?? '',
+        'Google Maps URL' : item.google_maps_url || '',
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+
+    // Auto column width berdasarkan konten terpanjang
+    const colKeys = Object.keys(rows[0] || {}) as (keyof typeof rows[0])[];
+    ws['!cols'] = colKeys.map((key) => ({
+        wch: Math.max(
+            String(key).length,
+            ...rows.map((r) => String(r[key] ?? '').length)
+        ) + 2,
+    }));
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, sheetLabel);
+
+    const today = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `${filename}_${today}.xlsx`);
+};
+
+// Tombol Export Excel yang reusable
+const ExportButton = ({ items, filename, sheetLabel }: { items: BusinessItem[]; filename: string; sheetLabel: string }) =>
+    React.createElement('button', {
+        onClick: () => exportToExcel(items, filename, sheetLabel),
+        className: 'shrink-0 flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 active:bg-emerald-200 transition',
+        title: `Export ${sheetLabel} ke Excel`,
+    },
+        React.createElement('svg', {
+            xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 20 20', fill: 'currentColor',
+            className: 'w-4 h-4 shrink-0',
+        },
+            React.createElement('path', { fillRule: 'evenodd', d: 'M10 3a.75.75 0 01.75.75v10.638l3.96-4.158a.75.75 0 111.08 1.04l-5.25 5.5a.75.75 0 01-1.08 0l-5.25-5.5a.75.75 0 111.08-1.04l3.96 4.158V3.75A.75.75 0 0110 3z', clipRule: 'evenodd' })
+        ),
+        React.createElement('span', null, 'Export Excel')
+    );
+
 // ─── Detail Modal ─────────────────────────────────────────────────────────────
 
 const DetailModal = ({ item, onClose }: { item: BusinessItem; onClose: () => void }) => {
@@ -99,7 +158,6 @@ const DetailModal = ({ item, onClose }: { item: BusinessItem; onClose: () => voi
                 React.createElement('div', null,
                     React.createElement('h3', { className: 'text-base font-semibold text-slate-950' }, item.name),
                     React.createElement('p', { className: 'text-sm text-slate-500 mt-0.5' }, item.address || 'Alamat tidak tersedia'),
-                    // Rating Google
                     item.rating ? React.createElement('div', { className: 'flex items-center gap-1.5 mt-1.5' },
                         React.createElement('span', { className: 'text-amber-400 text-sm' }, '★'),
                         React.createElement('span', { className: 'text-sm font-semibold text-slate-700' }, item.rating.toFixed(1)),
@@ -114,7 +172,6 @@ const DetailModal = ({ item, onClose }: { item: BusinessItem; onClose: () => voi
             ),
             // Body
             React.createElement('div', { className: 'p-6 space-y-5' },
-                // Skor & Level
                 React.createElement('div', { className: 'flex items-center gap-3 flex-wrap' },
                     React.createElement('div', { className: 'rounded-2xl bg-slate-100 px-5 py-3 text-center' },
                         React.createElement('p', { className: 'text-xs font-semibold uppercase tracking-widest text-slate-500' }, 'Skor Digital'),
@@ -122,7 +179,6 @@ const DetailModal = ({ item, onClose }: { item: BusinessItem; onClose: () => voi
                     ),
                     React.createElement('span', { className: `inline-block rounded-full px-3 py-1 text-sm font-semibold ${levelBadgeClass(item.digital_level)}` }, item.digital_level)
                 ),
-                // Koordinat + Google Maps
                 item.latitude && item.longitude ? React.createElement('div', { className: 'flex gap-2' },
                     React.createElement('a', {
                         href: item.google_maps_url || `https://www.google.com/maps/search/?api=1&query=${item.latitude},${item.longitude}`,
@@ -134,7 +190,6 @@ const DetailModal = ({ item, onClose }: { item: BusinessItem; onClose: () => voi
                         React.createElement('span', { className: 'ml-auto text-xs text-slate-400' }, '→')
                     )
                 ) : null,
-                // Platform online
                 React.createElement('div', { className: 'space-y-2' },
                     React.createElement('p', { className: 'text-xs font-semibold uppercase tracking-widest text-slate-400' }, 'Platform Online'),
                     platforms.length > 0
@@ -154,7 +209,6 @@ const DetailModal = ({ item, onClose }: { item: BusinessItem; onClose: () => voi
                           )
                         : React.createElement('p', { className: 'text-sm text-slate-400' }, 'Tidak ada platform online terdeteksi.')
                 ),
-                // Kontak
                 contacts.length > 0 ? React.createElement('div', { className: 'space-y-2' },
                     React.createElement('p', { className: 'text-xs font-semibold uppercase tracking-widest text-slate-400' }, 'Kontak'),
                     React.createElement('div', { className: 'space-y-2' },
@@ -210,22 +264,22 @@ const Navbar = ({ activePage, onNavigate }: { activePage: Page; onNavigate: (p: 
 // ─── Dashboard Page ───────────────────────────────────────────────────────────
 
 const DashboardPage = () => {
-    const [searchTerm, setSearchTerm]         = useState('');
-    const [radius, setRadius]                 = useState('1000');
-    const [statusText, setStatusText]         = useState('Masukkan lokasi untuk memulai pencarian.');
-    const [nearbySummary, setNearbySummary]   = useState('Tekan Cari Usaha Sekitar setelah memilih lokasi.');
+    const [searchTerm, setSearchTerm]           = useState('');
+    const [radius, setRadius]                   = useState('1000');
+    const [statusText, setStatusText]           = useState('Masukkan lokasi untuk memulai pencarian.');
+    const [nearbySummary, setNearbySummary]     = useState('Tekan Cari Usaha Sekitar setelah memilih lokasi.');
     const [currentPosition, setCurrentPosition] = useState<{ lat: number; lon: number } | null>(null);
-    const [nearbyItems, setNearbyItems]       = useState<BusinessItem[]>([]);
+    const [nearbyItems, setNearbyItems]         = useState<BusinessItem[]>([]);
     const [savedBusinesses, setSavedBusinesses] = useState<BusinessItem[]>([]);
     const [isGeocodingLoading, setIsGeocodingLoading] = useState(false);
     const [isNearbyLoading, setIsNearbyLoading]       = useState(false);
-    const [hasSearched, setHasSearched]       = useState(false);
-    const [selectedItem, setSelectedItem]     = useState<BusinessItem | null>(null);
+    const [hasSearched, setHasSearched]         = useState(false);
+    const [selectedItem, setSelectedItem]       = useState<BusinessItem | null>(null);
 
-    const mapRef       = useRef<HTMLDivElement>(null);
-    const mapInstance  = useRef<L.Map | null>(null);
-    const savedLayer   = useRef<L.LayerGroup | null>(null);
-    const nearbyLayer  = useRef<L.LayerGroup | null>(null);
+    const mapRef      = useRef<HTMLDivElement>(null);
+    const mapInstance = useRef<L.Map | null>(null);
+    const savedLayer  = useRef<L.LayerGroup | null>(null);
+    const nearbyLayer = useRef<L.LayerGroup | null>(null);
 
     const nearbyLevelCounts = useMemo(() => {
         const counts = { high: 0, medium: 0, low: 0 };
@@ -302,8 +356,15 @@ const DashboardPage = () => {
             if (list.length) {
                 list.forEach((item) => {
                     if (item.latitude && item.longitude) {
+                        const markerColor = (() => {
+                            if (['Sangat Tinggi', 'Tinggi'].includes(item.digital_level))
+                                return { color: '#16a34a', fillColor: '#4ade80' };
+                            if (item.digital_level === 'Sedang')
+                        return { color: '#eab308', fillColor: '#fef08a' };
+                        return { color: '#ef4444', fillColor: '#fecaca' };
+                        })();
                         L.circleMarker([item.latitude, item.longitude], {
-                            radius: 7, color: '#2563eb', fillColor: '#93c5fd', fillOpacity: 0.9,
+                            radius: 7, ...markerColor, fillOpacity: 0.9,
                         })
                             .addTo(nearbyLayer.current!)
                             .bindPopup(`<strong>${item.name}</strong><br />${item.address || '—'}<br />Skor: ${item.digital_score}`);
@@ -322,6 +383,9 @@ const DashboardPage = () => {
     const pctHigh = total ? Math.round((nearbyLevelCounts.high   / total) * 100) : 0;
     const pctMed  = total ? Math.round((nearbyLevelCounts.medium / total) * 100) : 0;
     const pctLow  = total ? 100 - pctHigh - pctMed : 0;
+
+    // Nama file export menyertakan wilayah pencarian dan radius
+    const exportFilename = `usaha_sekitar_${searchTerm.trim().replace(/\s+/g, '_') || 'wilayah'}_r${radius}m`;
 
     return React.createElement('div', { className: 'mx-auto max-w-[1320px] px-4 py-8 sm:px-6 lg:px-8 space-y-6' },
 
@@ -360,7 +424,17 @@ const DashboardPage = () => {
             ),
             // Tabel usaha sekitar
             React.createElement('div', { className: 'rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-200 flex flex-col gap-4' },
-                React.createElement('h2', { className: 'text-base font-semibold text-slate-950' }, 'Usaha di Sekitar Wilayah'),
+                // ── Header tabel dengan tombol Export ──
+                React.createElement('div', { className: 'flex items-center justify-between gap-3' },
+                    React.createElement('h2', { className: 'text-base font-semibold text-slate-950' }, 'Usaha di Sekitar Wilayah'),
+                    nearbyItems.length > 0
+                        ? React.createElement(ExportButton, {
+                            items: nearbyItems,
+                            filename: exportFilename,
+                            sheetLabel: 'Usaha Sekitar',
+                          })
+                        : null
+                ),
                 React.createElement('p', { className: 'rounded-xl bg-slate-100 px-4 py-2.5 text-sm text-slate-600' }, nearbySummary),
                 React.createElement('div', { className: 'overflow-auto rounded-2xl border border-slate-200 max-h-[380px]' },
                     React.createElement('table', { className: 'w-full border-collapse text-sm' },
@@ -498,15 +572,25 @@ const DaftarUsahaPage = () => {
 
         // ── Tabel ──
         React.createElement('div', { className: 'rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-200 space-y-4' },
-            React.createElement('div', { className: 'flex items-center justify-between gap-4' },
+            // ── Header tabel dengan tombol Export + Tambah Usaha ──
+            React.createElement('div', { className: 'flex items-center justify-between gap-4 flex-wrap' },
                 React.createElement('div', null,
                     React.createElement('h2', { className: 'text-base font-semibold text-slate-950' }, 'Daftar Usaha yang Ditambahkan'),
                     React.createElement('p', { className: 'text-sm text-slate-500 mt-0.5' }, 'Usaha yang telah Anda simpan ke database.')
                 ),
-                React.createElement('button', {
-                    onClick: () => setShowModal(true),
-                    className: 'shrink-0 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700',
-                }, '+ Tambah Usaha')
+                React.createElement('div', { className: 'flex items-center gap-2' },
+                    !loading && businesses.length > 0
+                        ? React.createElement(ExportButton, {
+                            items: businesses,
+                            filename: 'daftar_usaha',
+                            sheetLabel: 'Daftar Usaha',
+                          })
+                        : null,
+                    React.createElement('button', {
+                        onClick: () => setShowModal(true),
+                        className: 'shrink-0 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700',
+                    }, '+ Tambah Usaha')
+                )
             ),
             loading
                 ? React.createElement('div', { className: 'py-16 text-center text-sm text-slate-400' }, 'Memuat data…')
