@@ -11,11 +11,19 @@ use Illuminate\View\View;
 
 class GisController extends Controller
 {
+    private string $googleApiKey;
+
+    public function __construct()
+    {
+        $this->googleApiKey = config('services.google_maps.key');
+    }
+
     public function index(): View
     {
         return view('dashboard');
     }
 
+    // ── Geocode: Nominatim → Google Geocoding API ──────────────────────────────
     public function geocode(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -28,28 +36,42 @@ class GisController extends Controller
 
         $query = $validator->validated()['q'];
 
-        $response = Http::withHeaders([
-            'User-Agent' => 'UsahaOnlineDetector/1.0 (+https://example.com)',
-        ])->timeout(20)->get('https://nominatim.openstreetmap.org/search', [
-            'q' => $query,
-            'format' => 'json',
-            'addressdetails' => 1,
-            'limit' => 8,
-            'countrycodes' => 'id',
+        $response = Http::timeout(20)->get('https://maps.googleapis.com/maps/api/geocode/json', [
+            'address'    => $query,
+            'key'        => $this->googleApiKey,
+            'region'     => 'id',
+            'language'   => 'id',
         ]);
 
         if ($response->failed()) {
-            return Response::json(['error' => 'Gagal mengambil data geocoding dari Nominatim.'], 500);
+            return Response::json(['error' => 'Gagal mengambil data geocoding dari Google.'], 500);
         }
 
-        return Response::json($response->json());
+        $json = $response->json();
+
+        if (($json['status'] ?? '') !== 'OK' || empty($json['results'])) {
+            return Response::json([]);
+        }
+
+        // Normalise ke format yang sama seperti Nominatim agar frontend tidak perlu berubah
+        $results = array_map(function ($item) {
+            $loc = $item['geometry']['location'];
+            return [
+                'lat'          => $loc['lat'],
+                'lon'          => $loc['lng'],
+                'display_name' => $item['formatted_address'],
+            ];
+        }, $json['results']);
+
+        return Response::json($results);
     }
 
+    // ── Nearby: Overpass → Google Places Nearby Search ────────────────────────
     public function nearby(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'lat' => ['required', 'numeric'],
-            'lon' => ['required', 'numeric'],
+            'lat'    => ['required', 'numeric'],
+            'lon'    => ['required', 'numeric'],
             'radius' => ['nullable', 'integer', 'min:100', 'max:5000'],
         ]);
 
@@ -58,88 +80,141 @@ class GisController extends Controller
         }
 
         $validated = $validator->validated();
-        $lat = $validated['lat'];
-        $lon = $validated['lon'];
+        $lat    = $validated['lat'];
+        $lon    = $validated['lon'];
         $radius = $validated['radius'] ?? 1500;
 
-        $query = "[out:json][timeout:25];(";
-        $query .= "node(around:$radius,$lat,$lon)[shop];";
-        $query .= "way(around:$radius,$lat,$lon)[shop];";
-        $query .= "node(around:$radius,$lat,$lon)[amenity=cafe];";
-        $query .= "way(around:$radius,$lat,$lon)[amenity=cafe];";
-        $query .= "node(around:$radius,$lat,$lon)[amenity=restaurant];";
-        $query .= "way(around:$radius,$lat,$lon)[amenity=restaurant];";
-        $query .= ");out center tags;";
+        // Google Places Nearby Search — ambil semua tipe bisnis yang relevan
+        $types = ['store', 'restaurant', 'cafe', 'food', 'shopping_mall', 'supermarket'];
+        $allPlaces = [];
+        $seenIds   = [];
 
-        try {
-            $response = Http::withHeaders([
-                'User-Agent' => 'UsahaOnlineDetector/1.0 (+https://example.com)',
-            ])->timeout(40)->asForm()->post('https://overpass-api.de/api/interpreter', [
-                'data' => $query,
-            ]);
-        } catch (\Exception $e) {
-            return Response::json(['error' => 'Gagal mengambil data dari Overpass API.', 'detail' => $e->getMessage()], 500);
+        foreach ($types as $type) {
+            $pageToken = null;
+
+            do {
+                $params = [
+                    'location'  => "$lat,$lon",
+                    'radius'    => $radius,
+                    'type'      => $type,
+                    'key'       => $this->googleApiKey,
+                    'language'  => 'id',
+                ];
+
+                if ($pageToken) {
+                    $params['pagetoken'] = $pageToken;
+                    sleep(2); // Google membutuhkan jeda sebelum pagetoken aktif
+                }
+
+                $response = Http::timeout(30)->get(
+                    'https://maps.googleapis.com/maps/api/place/nearbysearch/json',
+                    $params
+                );
+
+                if ($response->failed()) {
+                    break;
+                }
+
+                $json      = $response->json();
+                $status    = $json['status'] ?? '';
+                $pageToken = $json['next_page_token'] ?? null;
+
+                if (!in_array($status, ['OK', 'ZERO_RESULTS'])) {
+                    break;
+                }
+
+                foreach ($json['results'] ?? [] as $place) {
+                    $placeId = $place['place_id'] ?? null;
+                    if (!$placeId || isset($seenIds[$placeId])) continue;
+                    $seenIds[$placeId] = true;
+                    $allPlaces[]       = $place;
+                }
+
+                // Batasi agar tidak terlalu banyak request
+                if (count($allPlaces) >= 60) {
+                    $pageToken = null;
+                }
+
+            } while ($pageToken);
         }
 
-        if ($response->failed()) {
-            $status = $response->status();
-            $body = (string) $response->body();
-            $excerpt = strlen($body) > 512 ? substr($body, 0, 512) . '...' : $body;
-            return Response::json(['error' => 'Gagal mengambil data dari Overpass API.', 'status' => $status, 'response_excerpt' => $excerpt], 500);
-        }
+        // Untuk setiap place, ambil detail (website, phone, dll) via Place Details API
+        $results = [];
 
-        $elements = $response->json('elements', []);
+        foreach ($allPlaces as $place) {
+            $placeId = $place['place_id'];
 
-        $results = array_map(function ($item) {
-            $tags = $item['tags'] ?? [];
-            $latitude = $item['lat'] ?? ($item['center']['lat'] ?? null);
-            $longitude = $item['lon'] ?? ($item['center']['lon'] ?? null);
-            $website = $this->firstTag($tags, ['website', 'contact:website']);
-            $facebook = $this->firstTag($tags, ['facebook', 'contact:facebook']);
-            $instagram = $this->firstTag($tags, ['instagram', 'contact:instagram']);
-            $whatsapp = $this->firstTag($tags, ['whatsapp', 'contact:whatsapp']);
-            $phone = $this->firstTag($tags, ['phone', 'contact:phone']);
-            $email = $this->firstTag($tags, ['email', 'contact:email']);
+            $detailResp = Http::timeout(15)->get(
+                'https://maps.googleapis.com/maps/api/place/details/json',
+                [
+                    'place_id' => $placeId,
+                    'fields'   => 'name,formatted_address,geometry,website,formatted_phone_number,url,opening_hours,types,rating,user_ratings_total',
+                    'key'      => $this->googleApiKey,
+                    'language' => 'id',
+                ]
+            );
 
-            $addressParts = array_filter([
-                $tags['addr:housenumber'] ?? null,
-                $tags['addr:street'] ?? null,
-                $tags['addr:suburb'] ?? null,
-                $tags['addr:city'] ?? null,
-                $tags['addr:state'] ?? null,
-            ]);
-            $address = $addressParts ? implode(', ', $addressParts) : ($tags['addr:full'] ?? null);
+            $detail = [];
+            if ($detailResp->ok()) {
+                $detail = $detailResp->json('result', []);
+            }
+
+            $website = $detail['website'] ?? null;
+            $phone   = $detail['formatted_phone_number'] ?? null;
+            $loc     = $place['geometry']['location'] ?? [];
+
+            // Coba deteksi platform dari website URL
+            $instagram = null;
+            $facebook  = null;
+            $tokopedia = null;
+            $shopee    = null;
+            $tiktok    = null;
+
+            if ($website) {
+                if (str_contains($website, 'instagram.com'))  $instagram  = $website;
+                if (str_contains($website, 'facebook.com'))   $facebook   = $website;
+                if (str_contains($website, 'tokopedia.com'))  $tokopedia  = $website;
+                if (str_contains($website, 'shopee.co.id'))   $shopee     = $website;
+                if (str_contains($website, 'tiktok.com'))     $tiktok     = $website;
+            }
 
             $score = Business::computeDigitalScore([
-                'website' => $website,
-                'facebook' => $facebook,
-                'instagram' => $instagram,
-                'whatsapp' => $whatsapp,
-                'phone' => $phone,
-                'email' => $email,
-                'opening_hours' => $tags['opening_hours'] ?? null,
-                'ecommerce' => $tags['ecommerce'] ?? null,
-                'name' => $tags['name'] ?? null,
+                'website'       => $website,
+                'facebook'      => $facebook,
+                'instagram'     => $instagram,
+                'whatsapp'      => null,
+                'phone'         => $phone,
+                'email'         => null,
+                'opening_hours' => !empty($detail['opening_hours']) ? 'set' : null,
+                'name'          => $place['name'] ?? null,
             ]);
 
-            return [
-                'id' => $item['id'] ?? null,
-                'type' => $item['type'] ?? 'unknown',
-                'name' => $tags['name'] ?? 'Usaha Tanpa Nama',
-                'address' => $address,
-                'latitude' => $latitude,
-                'longitude' => $longitude,
-                'website' => $website,
-                'facebook' => $facebook,
-                'instagram' => $instagram,
-                'whatsapp' => $whatsapp,
-                'phone' => $phone,
-                'email' => $email,
-                'tags' => $tags,
+            $results[] = [
+                'id'            => $placeId,
+                'type'          => 'google_place',
+                'name'          => $place['name'] ?? 'Usaha Tanpa Nama',
+                'address'       => $detail['formatted_address'] ?? ($place['vicinity'] ?? null),
+                'latitude'      => $loc['lat'] ?? null,
+                'longitude'     => $loc['lng'] ?? null,
+                'website'       => $website,
+                'facebook'      => $facebook,
+                'instagram'     => $instagram,
+                'whatsapp'      => null,
+                'shopee'        => $shopee,
+                'tokopedia'     => $tokopedia,
+                'tiktok'        => $tiktok,
+                'phone'         => $phone,
+                'email'         => null,
+                'rating'        => $place['rating'] ?? null,
+                'total_reviews' => $place['user_ratings_total'] ?? null,
+                'google_maps_url' => $detail['url'] ?? null,
                 'digital_score' => $score,
                 'digital_level' => Business::buildDigitalLevel($score),
             ];
-        }, $elements);
+        }
+
+        // Urutkan: yang punya skor lebih tinggi di atas
+        usort($results, fn($a, $b) => $b['digital_score'] <=> $a['digital_score']);
 
         return Response::json($results);
     }
@@ -153,20 +228,20 @@ class GisController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'address' => ['nullable', 'string', 'max:1024'],
-            'latitude' => ['nullable', 'numeric'],
+            'name'      => ['required', 'string', 'max:255'],
+            'address'   => ['nullable', 'string', 'max:1024'],
+            'latitude'  => ['nullable', 'numeric'],
             'longitude' => ['nullable', 'numeric'],
-            'website' => ['nullable', 'string', 'max:255'],
+            'website'   => ['nullable', 'string', 'max:255'],
             'instagram' => ['nullable', 'string', 'max:255'],
-            'facebook' => ['nullable', 'string', 'max:255'],
-            'whatsapp' => ['nullable', 'string', 'max:255'],
-            'shopee' => ['nullable', 'string', 'max:255'],
+            'facebook'  => ['nullable', 'string', 'max:255'],
+            'whatsapp'  => ['nullable', 'string', 'max:255'],
+            'shopee'    => ['nullable', 'string', 'max:255'],
             'tokopedia' => ['nullable', 'string', 'max:255'],
-            'tiktok' => ['nullable', 'string', 'max:255'],
+            'tiktok'    => ['nullable', 'string', 'max:255'],
         ]);
 
-        $score = Business::computeDigitalScore($validated);
+        $score                    = Business::computeDigitalScore($validated);
         $validated['digital_score'] = $score;
         $validated['digital_level'] = Business::buildDigitalLevel($score);
 
@@ -194,21 +269,10 @@ class GisController extends Controller
             ->count();
 
         return Response::json([
-            'total' => (int) $stats->total,
-            'average_score' => round($stats->average_score ?? 0, 1),
+            'total'           => (int) $stats->total,
+            'average_score'   => round($stats->average_score ?? 0, 1),
             'online_presence' => $onlineCount,
-            'levels' => $levels,
+            'levels'          => $levels,
         ]);
-    }
-
-    private function firstTag(array $tags, array $keys)
-    {
-        foreach ($keys as $key) {
-            if (!empty($tags[$key])) {
-                return $tags[$key];
-            }
-        }
-
-        return null;
     }
 }
