@@ -59,6 +59,31 @@ interface BusinessItem {
     digital_level: string;
 }
 
+// ─── Client-side exclusion filter (defensive layer) ──────────────────────────
+// Kata kunci nama yang menandakan bukan usaha digital
+const EXCLUDED_NAME_KEYWORDS_CLIENT = [
+    'bank', 'bri', 'bni', 'bca', 'mandiri', 'btn', 'bsi',
+    'danamon', 'cimb', 'niaga', 'permata', 'maybank', 'ocbc',
+    'bjb', 'bpd', 'koperasi', 'pegadaian', 'bpr',
+    'atm', 'anjungan tunai',
+    'sekolah', 'sdn', 'smpn', 'sman', 'smkn',
+    'universitas', 'institut', 'politeknik', 'akademi', 'pesantren',
+    'madrasah', 'paud',
+    'rumah sakit', 'rsud', 'rsia', 'rsup', 'rsu ',
+    'puskesmas', 'pustu', 'posyandu',
+    'kantor dinas', 'kelurahan', 'kecamatan',
+    'balai ', 'bpjs', 'samsat', 'polres', 'polsek',
+    'koramil', 'kodim', 'kpu', 'kejaksaan', 'pengadilan',
+    'masjid', 'musholla', 'gereja', 'pura', 'vihara', 'klenteng',
+    'terminal', 'stasiun', 'pelabuhan', 'bandara',
+    'pemadam kebakaran', 'damkar', 'pdam',
+];
+
+const isExcludedBusiness = (item: BusinessItem): boolean => {
+    const nameLower = (item.name || '').toLowerCase();
+    return EXCLUDED_NAME_KEYWORDS_CLIENT.some((kw) => nameLower.includes(kw));
+};
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const levelBadgeClass = (level: string) => {
@@ -91,7 +116,6 @@ const TableSearchInput = ({
 }) =>
     React.createElement('div', { className: 'flex items-center gap-3' },
         React.createElement('div', { className: 'relative flex-1' },
-            // Icon search
             React.createElement('div', { className: 'pointer-events-none absolute inset-y-0 left-3 flex items-center' },
                 React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 20 20', fill: 'currentColor', className: 'w-4 h-4 text-slate-400' },
                     React.createElement('path', { fillRule: 'evenodd', d: 'M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z', clipRule: 'evenodd' })
@@ -104,7 +128,6 @@ const TableSearchInput = ({
                 placeholder,
                 className: 'w-full rounded-xl border border-slate-300 bg-slate-50 pl-9 pr-9 py-2.5 text-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100',
             }),
-            // Tombol clear jika ada input
             value ? React.createElement('button', {
                 onClick: () => onChange(''),
                 className: 'absolute inset-y-0 right-3 flex items-center text-slate-400 hover:text-slate-700 transition',
@@ -114,7 +137,6 @@ const TableSearchInput = ({
                 )
             ) : null
         ),
-        // Counter hasil
         value ? React.createElement('span', { className: 'shrink-0 text-xs text-slate-500 tabular-nums' },
             `${resultCount} / ${totalCount}`
         ) : null
@@ -277,7 +299,7 @@ const Navbar = ({ activePage, onNavigate }: { activePage: Page; onNavigate: (p: 
                         React.createElement('path', { fillRule: 'evenodd', d: 'M11.54 22.351l.07.04.028.016a.76.76 0 00.723 0l.028-.015.071-.041a16.975 16.975 0 001.144-.742 19.58 19.58 0 002.683-2.282c1.944-2.003 3.5-4.697 3.5-8.071a6.75 6.75 0 00-13.5 0c0 3.374 1.555 6.068 3.5 8.07a19.576 19.576 0 002.683 2.283 16.975 16.975 0 001.144.742zM12 13.5a2.25 2.25 0 100-4.5 2.25 2.25 0 000 4.5z', clipRule: 'evenodd' })
                     )
                 ),
-                React.createElement('span', { className: 'text-base font-semibold text-slate-950 hidden sm:block' }, 'Pemetaan Usaha Online')
+                React.createElement('span', { className: 'text-base font-semibold text-slate-950 hidden sm:block' }, 'Pemetaan Usaha Digital')
             ),
             React.createElement('div', { className: 'flex items-center gap-1' },
                 navItems.map(({ id, label }) =>
@@ -306,9 +328,7 @@ const DashboardPage = () => {
     const [isNearbyLoading, setIsNearbyLoading]       = useState(false);
     const [hasSearched, setHasSearched]         = useState(false);
     const [selectedItem, setSelectedItem]       = useState<BusinessItem | null>(null);
-
-    // ── State search tabel usaha sekitar ──
-    const [nearbySearch, setNearbySearch] = useState('');
+    const [nearbySearch, setNearbySearch]       = useState('');
 
     const mapRef      = useRef<HTMLDivElement>(null);
     const mapInstance = useRef<L.Map | null>(null);
@@ -325,7 +345,6 @@ const DashboardPage = () => {
         return counts;
     }, [nearbyItems]);
 
-    // ── Filter nearbyItems berdasarkan search ──
     const filteredNearbyItems = useMemo(() =>
         nearbySearch.trim()
             ? nearbyItems.filter((item) =>
@@ -392,11 +411,15 @@ const DashboardPage = () => {
         if (!lat || !lon) { setNearbySummary('Pilih lokasi terlebih dahulu.'); return; }
         setNearbySummary('Mengambil usaha sekitar dari Google Maps...');
         setIsNearbyLoading(true);
-        setNearbySearch(''); // reset search saat cari ulang
+        setNearbySearch('');
         nearbyLayer.current?.clearLayers();
         try {
-            const items = await fetchJson(`${api.nearby}?lat=${lat}&lon=${lon}&radius=${parseInt(radius, 10)}`);
-            const list: BusinessItem[] = Array.isArray(items) ? items : [];
+            const raw = await fetchJson(`${api.nearby}?lat=${lat}&lon=${lon}&radius=${parseInt(radius, 10)}`);
+            const allItems: BusinessItem[] = Array.isArray(raw) ? raw : [];
+
+            // Filter defensif di sisi klien — buang usaha non-digital yang lolos backend
+            const list = allItems.filter((item) => !isExcludedBusiness(item));
+
             setNearbyItems(list);
             setHasSearched(true);
             if (list.length) {
@@ -434,7 +457,6 @@ const DashboardPage = () => {
 
     return React.createElement('div', { className: 'mx-auto max-w-[1320px] px-4 py-8 sm:px-6 lg:px-8 space-y-6' },
 
-        // ── Search bar lokasi ──
         React.createElement('div', { className: 'rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-200 space-y-4' },
             React.createElement('h2', { className: 'text-base font-semibold text-slate-950' }, 'Cari Wilayah'),
             React.createElement('div', { className: 'flex flex-col sm:flex-row gap-3' },
@@ -449,7 +471,7 @@ const DashboardPage = () => {
                     value: radius, onChange: (e: any) => setRadius(e.target.value),
                     className: 'rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm outline-none focus:border-sky-500',
                 },
-                    ['500', '1000', '1500', '2500'].map((r) =>
+                    ['1000', '1500', '2500','5000'].map((r) =>
                         React.createElement('option', { key: r, value: r }, `${r} m`)
                     )
                 ),
@@ -461,17 +483,12 @@ const DashboardPage = () => {
             React.createElement('p', { className: 'rounded-xl bg-slate-100 px-4 py-2.5 text-sm text-slate-600' }, statusText)
         ),
 
-        // ── Map + Nearby table ──
         React.createElement('div', { className: 'grid gap-6 xl:grid-cols-[1.6fr_1fr]' },
-            // Peta
             React.createElement('div', { className: 'rounded-[28px] bg-white p-4 shadow-sm ring-1 ring-slate-200' },
                 React.createElement('div', { id: 'map', ref: mapRef, className: 'h-[500px] w-full rounded-[20px] border border-slate-200 relative z-0' })
             ),
 
-            // Panel tabel usaha sekitar
             React.createElement('div', { className: 'rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-200 flex flex-col gap-4' },
-
-                // Header + Export
                 React.createElement('div', { className: 'flex items-center justify-between gap-3' },
                     React.createElement('h2', { className: 'text-base font-semibold text-slate-950' }, 'Usaha di Sekitar Wilayah'),
                     nearbyItems.length > 0
@@ -485,7 +502,6 @@ const DashboardPage = () => {
 
                 React.createElement('p', { className: 'rounded-xl bg-slate-100 px-4 py-2.5 text-sm text-slate-600' }, nearbySummary),
 
-                // ── Search tabel usaha sekitar ──
                 nearbyItems.length > 0
                     ? React.createElement(TableSearchInput, {
                         value: nearbySearch,
@@ -543,7 +559,6 @@ const DashboardPage = () => {
             )
         ),
 
-        // ── Distribusi Level Digital ──
         React.createElement('div', { className: 'rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-200 space-y-4' },
             React.createElement('div', { className: 'flex items-center justify-between' },
                 React.createElement('h2', { className: 'text-base font-semibold text-slate-950' }, 'Distribusi Level Digital Wilayah'),
@@ -573,18 +588,45 @@ const DashboardPage = () => {
                     'Grafik distribusi akan muncul setelah pencarian wilayah berhasil.')
         ),
 
-        // ── Detail Modal ──
         selectedItem ? React.createElement(DetailModal, { item: selectedItem, onClose: () => setSelectedItem(null) }) : null,
 
-        // ── Loading overlay ──
-        (isGeocodingLoading || isNearbyLoading) ? React.createElement('div', { className: 'fixed inset-0 z-[9999] flex items-center justify-center' },
-            React.createElement('div', { className: 'absolute inset-0 bg-black/25' }),
-            React.createElement('div', { className: 'relative z-10 flex flex-col items-center gap-3 rounded-2xl bg-white/95 px-8 py-6 shadow-xl' },
-                React.createElement('div', { className: 'w-10 h-10 border-4 border-sky-500 border-t-transparent rounded-full animate-spin' }),
-                React.createElement('p', { className: 'text-sm font-medium text-slate-800' },
-                    isGeocodingLoading ? 'Mencari lokasi…' : 'Mengambil usaha dari Google Maps…')
+        (isGeocodingLoading || isNearbyLoading) ? React.createElement('div', {
+        className: 'fixed inset-0 z-[9999] flex items-center justify-center'
+    },
+        React.createElement('div', { className: 'absolute inset-0 bg-slate-950/60 backdrop-blur-sm' }),
+        React.createElement('div', {
+            className: 'relative z-10 flex flex-col items-center gap-6 rounded-3xl bg-white px-10 py-8 shadow-2xl shadow-slate-950/20 ring-1 ring-slate-200 min-w-[260px]'
+        },
+            React.createElement('div', { className: 'relative w-16 h-16' },
+                React.createElement('div', { className: 'absolute inset-0 rounded-full border-4 border-slate-100' }),
+                React.createElement('div', { className: 'absolute inset-0 rounded-full border-4 border-transparent border-t-sky-500 border-r-sky-300 animate-spin' }),
+                React.createElement('div', {
+                    className: 'absolute inset-2 rounded-full border-4 border-transparent border-b-indigo-500 border-l-indigo-300',
+                    style: { animation: 'spin 1.2s linear infinite reverse' }
+                }),
+                React.createElement('div', { className: 'absolute inset-[22px] rounded-full bg-sky-500 animate-pulse' })
+            ),
+            React.createElement('div', { className: 'text-center space-y-1' },
+                React.createElement('p', { className: 'text-sm font-semibold text-slate-900' },
+                    isGeocodingLoading ? 'Mencari Lokasi' : 'Memuat Data Usaha'
+                ),
+                React.createElement('p', { className: 'text-xs text-slate-500' },
+                    isGeocodingLoading
+                        ? 'Menghubungi layanan geocoding…'
+                        : 'Mengambil data dari Google Maps…'
+                )
+            ),
+            React.createElement('div', { className: 'flex items-center gap-1.5' },
+                ...[0, 1, 2].map((i) =>
+                    React.createElement('div', {
+                        key: i,
+                        className: 'w-1.5 h-1.5 rounded-full bg-sky-400',
+                        style: { animation: `pulse 1.2s ease-in-out infinite`, animationDelay: `${i * 0.2}s` }
+                    })
+                )
             )
-        ) : null
+        )
+    ) : null
     );
 };
 
@@ -596,8 +638,6 @@ const DaftarUsahaPage = () => {
     const [loading, setLoading]           = useState(true);
     const [showModal, setShowModal]       = useState(false);
     const [selectedItem, setSelectedItem] = useState<BusinessItem | null>(null);
-
-    // ── State search tabel daftar usaha ──
     const [daftarSearch, setDaftarSearch] = useState('');
 
     useEffect(() => {
@@ -624,7 +664,6 @@ const DaftarUsahaPage = () => {
 
     const handleSaved = async () => { setShowModal(false); await loadAll(); };
 
-    // ── Filter businesses berdasarkan search ──
     const filteredBusinesses = useMemo(() =>
         daftarSearch.trim()
             ? businesses.filter((b) =>
@@ -637,7 +676,6 @@ const DaftarUsahaPage = () => {
 
     return React.createElement('div', { className: 'mx-auto max-w-[1320px] px-4 py-8 sm:px-6 lg:px-8 space-y-6' },
 
-        // ── Ringkasan ──
         React.createElement('div', { className: 'rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-200 space-y-4' },
             React.createElement('h2', { className: 'text-base font-semibold text-slate-950' }, 'Ringkasan Data Usaha Tersimpan'),
             React.createElement('div', { className: 'grid gap-4 sm:grid-cols-3' },
@@ -647,10 +685,8 @@ const DaftarUsahaPage = () => {
             )
         ),
 
-        // ── Tabel ──
         React.createElement('div', { className: 'rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-200 space-y-4' },
 
-            // Header + Export + Tambah
             React.createElement('div', { className: 'flex items-center justify-between gap-4 flex-wrap' },
                 React.createElement('div', null,
                     React.createElement('h2', { className: 'text-base font-semibold text-slate-950' }, 'Daftar Usaha yang Ditambahkan'),
@@ -671,7 +707,6 @@ const DaftarUsahaPage = () => {
                 )
             ),
 
-            // ── Search tabel daftar usaha ──
             !loading && businesses.length > 0
                 ? React.createElement(TableSearchInput, {
                     value: daftarSearch,
@@ -750,10 +785,8 @@ const DaftarUsahaPage = () => {
                 )
         ),
 
-        // ── Detail Modal ──
         selectedItem ? React.createElement(DetailModal, { item: selectedItem, onClose: () => setSelectedItem(null) }) : null,
 
-        // ── Modal Tambah Usaha ──
         showModal ? React.createElement('div', { className: 'fixed inset-0 z-[99999] flex items-center justify-center' },
             React.createElement('div', { className: 'absolute inset-0 bg-black/40', onClick: () => setShowModal(false) }),
             React.createElement('div', { className: 'relative z-[100000] w-full max-w-2xl mx-4 bg-white rounded-[28px] shadow-2xl overflow-y-auto max-h-[90vh]' },
