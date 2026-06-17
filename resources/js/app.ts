@@ -39,6 +39,7 @@ type Page = 'dashboard' | 'daftar';
 interface BusinessItem {
     id?: number | string;
     type?: string;
+    category?: string;
     name: string;
     address?: string;
     latitude?: number;
@@ -59,8 +60,8 @@ interface BusinessItem {
     digital_level: string;
 }
 
-// ─── Client-side exclusion filter (defensive layer) ──────────────────────────
-// Kata kunci nama yang menandakan bukan usaha digital
+// ─── Client-side exclusion filter ────────────────────────────────────────────
+
 const EXCLUDED_NAME_KEYWORDS_CLIENT = [
     'bank', 'bri', 'bni', 'bca', 'mandiri', 'btn', 'bsi',
     'danamon', 'cimb', 'niaga', 'permata', 'maybank', 'ocbc',
@@ -84,6 +85,355 @@ const isExcludedBusiness = (item: BusinessItem): boolean => {
     return EXCLUDED_NAME_KEYWORDS_CLIENT.some((kw) => nameLower.includes(kw));
 };
 
+// ─── Category helpers ─────────────────────────────────────────────────────────
+
+const CATEGORY_STYLE: Record<string, { badge: string; bar: string }> = {
+    'Restoran & Rumah Makan'      : { badge: 'bg-orange-50 text-orange-700 border-orange-200',    bar: '#f97316' },
+    'Kafe & Minuman'              : { badge: 'bg-amber-50 text-amber-700 border-amber-200',       bar: '#f59e0b' },
+    'Bakeri & Roti'               : { badge: 'bg-yellow-50 text-yellow-700 border-yellow-200',    bar: '#eab308' },
+    'Bar & Minuman'               : { badge: 'bg-purple-50 text-purple-700 border-purple-200',    bar: '#a855f7' },
+    'Makanan Siap Saji'           : { badge: 'bg-red-50 text-red-700 border-red-200',             bar: '#ef4444' },
+    'Makanan & Minuman'           : { badge: 'bg-rose-50 text-rose-700 border-rose-200',          bar: '#f43f5e' },
+    'Supermarket & Swalayan'      : { badge: 'bg-emerald-50 text-emerald-700 border-emerald-200', bar: '#10b981' },
+    'Pusat Perbelanjaan'          : { badge: 'bg-teal-50 text-teal-700 border-teal-200',          bar: '#14b8a6' },
+    'Toko Pakaian & Fashion'      : { badge: 'bg-pink-50 text-pink-700 border-pink-200',          bar: '#ec4899' },
+    'Toko Sepatu'                 : { badge: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200', bar: '#d946ef' },
+    'Elektronik & Gadget'         : { badge: 'bg-blue-50 text-blue-700 border-blue-200',          bar: '#3b82f6' },
+    'Furnitur & Perabot'          : { badge: 'bg-lime-50 text-lime-700 border-lime-200',          bar: '#84cc16' },
+    'Toko Bangunan & Material'    : { badge: 'bg-stone-100 text-stone-700 border-stone-300',      bar: '#78716c' },
+    'Peralatan Rumah Tangga'      : { badge: 'bg-cyan-50 text-cyan-700 border-cyan-200',          bar: '#06b6d4' },
+    'Minimarket & Toko Kelontong' : { badge: 'bg-green-50 text-green-700 border-green-200',       bar: '#22c55e' },
+    'Toko Umum'                   : { badge: 'bg-sky-50 text-sky-700 border-sky-200',             bar: '#0ea5e9' },
+    'Apotek & Toko Obat'          : { badge: 'bg-indigo-50 text-indigo-700 border-indigo-200',    bar: '#6366f1' },
+    'Salon & Kecantikan'          : { badge: 'bg-violet-50 text-violet-700 border-violet-200',    bar: '#8b5cf6' },
+    'Laundry & Cuci Baju'         : { badge: 'bg-slate-100 text-slate-600 border-slate-300',      bar: '#64748b' },
+    'Usaha Lainnya'               : { badge: 'bg-slate-50 text-slate-500 border-slate-200',       bar: '#94a3b8' },
+};
+
+const CATEGORY_ICONS: Record<string, string> = {
+    'Restoran & Rumah Makan'      : '🍽️',
+    'Kafe & Minuman'              : '☕',
+    'Bakeri & Roti'               : '🥐',
+    'Bar & Minuman'               : '🍹',
+    'Makanan Siap Saji'           : '🥡',
+    'Makanan & Minuman'           : '🍴',
+    'Supermarket & Swalayan'      : '🛒',
+    'Pusat Perbelanjaan'          : '🏬',
+    'Toko Pakaian & Fashion'      : '👗',
+    'Toko Sepatu'                 : '👟',
+    'Elektronik & Gadget'         : '📱',
+    'Furnitur & Perabot'          : '🪑',
+    'Toko Bangunan & Material'    : '🔨',
+    'Peralatan Rumah Tangga'      : '🏠',
+    'Minimarket & Toko Kelontong' : '🏪',
+    'Toko Umum'                   : '🛍️',
+    'Apotek & Toko Obat'          : '💊',
+    'Salon & Kecantikan'          : '💇',
+    'Laundry & Cuci Baju'         : '👕',
+    'Usaha Lainnya'               : '📦',
+};
+
+const categoryBadgeClass = (cat?: string) =>
+    (CATEGORY_STYLE[cat || ''] ?? CATEGORY_STYLE['Usaha Lainnya']).badge;
+
+const categoryBarColor = (cat?: string) =>
+    (CATEGORY_STYLE[cat || ''] ?? CATEGORY_STYLE['Usaha Lainnya']).bar;
+
+// ─── Download PNG gabungan (distribusi + bar chart kategori) ─────────────────
+
+interface DownloadParams {
+    locationLabel: string;
+    total: number;
+    high: number;
+    medium: number;
+    low: number;
+    pctHigh: number;
+    pctMed: number;
+    pctLow: number;
+    categoryData: [string, number][];
+}
+
+const downloadCombinedPNG = (p: DownloadParams) => {
+    const DPR        = 2;          // retina
+    const W          = 800;        // lebar logical
+    const PAD        = 40;
+
+    // ── Ukuran bagian distribusi ──
+    const DIST_H     = 260;
+
+    // ── Ukuran bagian bar chart ──
+    const ROW_H      = 38;
+    const LABEL_W    = 210;
+    const BAR_X      = PAD + LABEL_W;
+    const BAR_W      = W - BAR_X - PAD - 70;
+    const CHART_ROWS = Math.min(p.categoryData.length, 15);
+    const BAR_H      = CHART_ROWS * ROW_H + 60; // 60 = header section
+
+    // ── Footer ──
+    const FOOTER_H   = 36;
+
+    const TOTAL_H    = PAD + DIST_H + 24 + BAR_H + FOOTER_H + PAD;
+
+    const canvas  = document.createElement('canvas');
+    canvas.width  = W * DPR;
+    canvas.height = TOTAL_H * DPR;
+    const ctx = canvas.getContext('2d')!;
+    ctx.scale(DPR, DPR);
+
+    // ── Helpers ──
+    const font = (size: number, weight: string = '400') =>
+        `${weight} ${size}px -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`;
+
+    const roundRect = (x: number, y: number, w: number, h: number, r: number, fill: string) => {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+        ctx.fillStyle = fill;
+        ctx.fill();
+    };
+
+    // ════════════════════════════════
+    // Background putih
+    // ════════════════════════════════
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(0, 0, W, TOTAL_H);
+    roundRect(PAD / 2, PAD / 2, W - PAD, TOTAL_H - PAD, 20, '#ffffff');
+
+    // ════════════════════════════════
+    // Header global
+    // ════════════════════════════════
+    let y = PAD + 10;
+
+    ctx.font      = font(15, '700');
+    ctx.fillStyle = '#0f172a';
+    ctx.textAlign = 'center';
+    ctx.fillText(
+        p.locationLabel
+            ? `Laporan Digitalisasi Usaha — ${p.locationLabel}`
+            : 'Laporan Digitalisasi Usaha',
+        W / 2, y
+    );
+    y += 20;
+
+    ctx.font      = font(11);
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText(
+        `${p.total} usaha terdeteksi · ${new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })}`,
+        W / 2, y
+    );
+    y += 28;
+
+    // ════════════════════════════════
+    // BAGIAN 1 — Distribusi Level Digital
+    // ════════════════════════════════
+
+    ctx.textAlign = 'left';
+    ctx.font      = font(12, '700');
+    ctx.fillStyle = '#1e293b';
+    ctx.fillText('Distribusi Level Digital Wilayah', PAD, y);
+    ctx.font      = font(10);
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText(`Berdasarkan ${p.total} usaha`, PAD, y + 16);
+    y += 34;
+
+    // 3 stat cards
+    const CARD_W   = (W - PAD * 2 - 24) / 3;
+    const CARD_H   = 80;
+    const cards = [
+        { label: 'Tinggi / Sangat Tinggi', value: p.high,   color: '#10b981', bg: '#ecfdf5' },
+        { label: 'Sedang',                  value: p.medium, color: '#f59e0b', bg: '#fffbeb' },
+        { label: 'Rendah',                  value: p.low,    color: '#f43f5e', bg: '#fff1f2' },
+    ];
+
+    cards.forEach(({ label, value, color, bg }, i) => {
+        const cx = PAD + i * (CARD_W + 12);
+        roundRect(cx, y, CARD_W, CARD_H, 12, bg);
+
+        ctx.font      = font(8.5, '600');
+        ctx.fillStyle = '#64748b';
+        ctx.textAlign = 'left';
+        ctx.fillText(label.toUpperCase(), cx + 14, y + 20);
+
+        ctx.font      = font(36, '800');
+        ctx.fillStyle = color;
+        ctx.fillText(String(value), cx + 14, y + 62);
+
+        // persen kecil
+        const pct = p.total > 0 ? Math.round((value / p.total) * 100) : 0;
+        ctx.font      = font(10, '600');
+        ctx.fillStyle = color;
+        ctx.textAlign = 'right';
+        ctx.fillText(`${pct}%`, cx + CARD_W - 14, y + 62);
+    });
+
+    y += CARD_H + 20;
+
+    // Progress bar
+    const PB_H    = 14;
+    const PB_W    = W - PAD * 2;
+
+    // background track
+    roundRect(PAD, y, PB_W, PB_H, 7, '#e2e8f0');
+
+    // segments
+    const segments = [
+        { pct: p.pctHigh, color: '#34d399' },
+        { pct: p.pctMed,  color: '#fbbf24' },
+        { pct: p.pctLow,  color: '#fb7185' },
+    ];
+    let bx = PAD;
+    segments.forEach(({ pct, color }, i) => {
+        const sw = Math.round((pct / 100) * PB_W);
+        if (sw <= 0) return;
+        // Radius: kiri untuk segmen pertama, kanan untuk terakhir
+        const r = 7;
+        ctx.beginPath();
+        const left  = i === 0;
+        const right = i === segments.length - 1 || segments.slice(i + 1).every(s => s.pct === 0);
+        if (left && right) {
+            ctx.roundRect(bx, y, sw, PB_H, r);
+        } else if (left) {
+            ctx.roundRect(bx, y, sw, PB_H, [r, 0, 0, r]);
+        } else if (right) {
+            ctx.roundRect(bx, y, sw, PB_H, [0, r, r, 0]);
+        } else {
+            ctx.rect(bx, y, sw, PB_H);
+        }
+        ctx.fillStyle = color;
+        ctx.fill();
+        bx += sw;
+    });
+
+    // Legend
+    y += PB_H + 12;
+    const legends = [
+        { label: `${p.pctHigh}% Tinggi`,  color: '#34d399' },
+        { label: `${p.pctMed}% Sedang`,   color: '#fbbf24' },
+        { label: `${p.pctLow}% Rendah`,   color: '#fb7185' },
+    ];
+    let lx = PAD;
+    legends.forEach(({ label, color }) => {
+        ctx.beginPath();
+        ctx.arc(lx + 5, y + 5, 5, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.font      = font(11);
+        ctx.fillStyle = '#475569';
+        ctx.textAlign = 'left';
+        ctx.fillText(label, lx + 14, y + 9);
+        lx += ctx.measureText(label).width + 36;
+    });
+
+    y += 32;
+
+    // Garis pemisah
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth   = 1;
+    ctx.beginPath();
+    ctx.moveTo(PAD, y);
+    ctx.lineTo(W - PAD, y);
+    ctx.stroke();
+    y += 24;
+
+    // ════════════════════════════════
+    // BAGIAN 2 — Bar Chart Kategori
+    // ════════════════════════════════
+
+    ctx.textAlign = 'left';
+    ctx.font      = font(12, '700');
+    ctx.fillStyle = '#1e293b';
+    ctx.fillText('Perbandingan Usaha per Kategori', PAD, y);
+    ctx.font      = font(10);
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText(`${p.categoryData.length} kategori`, PAD, y + 16);
+    y += 34;
+
+    const maxCount = p.categoryData.length > 0 ? p.categoryData[0][1] : 1;
+    const rows     = p.categoryData.slice(0, 15);
+
+    rows.forEach(([cat, count]) => {
+        const midY  = y + ROW_H / 2;
+        const barW  = Math.max(4, (count / maxCount) * BAR_W);
+        const color = categoryBarColor(cat);
+        const icon  = CATEGORY_ICONS[cat] || '📦';
+        const pct   = p.total > 0 ? Math.round((count / p.total) * 100) : 0;
+
+        // Label kiri (icon + nama kategori)
+        ctx.font      = font(11);
+        ctx.fillStyle = '#475569';
+        ctx.textAlign = 'right';
+        // Truncate panjang nama
+        let catLabel = `${icon} ${cat}`;
+        while (ctx.measureText(catLabel).width > LABEL_W - 8 && catLabel.length > 4) {
+            catLabel = catLabel.slice(0, -1);
+        }
+        if (catLabel !== `${icon} ${cat}`) catLabel += '…';
+        ctx.fillText(catLabel, PAD + LABEL_W - 4, midY + 4);
+
+        // Track bar (abu)
+        roundRect(BAR_X, y + 8, BAR_W, ROW_H - 16, 6, '#f1f5f9');
+
+        // Bar berwarna
+        roundRect(BAR_X, y + 8, barW, ROW_H - 16, 6, color);
+
+        // Angka jumlah
+        ctx.font      = font(11, '700');
+        ctx.fillStyle = '#1e293b';
+        ctx.textAlign = 'left';
+        ctx.fillText(String(count), BAR_X + barW + 8, midY + 4);
+
+        // Persentase
+        ctx.font      = font(10);
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText(`${pct}%`, BAR_X + barW + 36, midY + 4);
+
+        y += ROW_H;
+    });
+
+    y += 16;
+
+    // ════════════════════════════════
+    // Footer
+    // ════════════════════════════════
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth   = 1;
+    ctx.beginPath();
+    ctx.moveTo(PAD, y);
+    ctx.lineTo(W - PAD, y);
+    ctx.stroke();
+    y += 16;
+
+    ctx.font      = font(9);
+    ctx.fillStyle = '#cbd5e1';
+    ctx.textAlign = 'left';
+    ctx.fillText('Pemetaan Usaha Digital', PAD, y + 6);
+
+    ctx.textAlign = 'right';
+    ctx.fillText(
+        `Diunduh: ${new Date().toLocaleString('id-ID', { dateStyle: 'long', timeStyle: 'short' })}`,
+        W - PAD, y + 6
+    );
+
+    // ── Export ke PNG ──
+    canvas.toBlob((blob) => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const a   = document.createElement('a');
+        a.href    = url;
+        a.download = `laporan_digitalisasi_${(p.locationLabel || 'wilayah').replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.png`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }, 'image/png');
+};
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const levelBadgeClass = (level: string) => {
@@ -102,17 +452,10 @@ const StatCard = ({ label, value, dark = false }: { label: string; value: string
 // ─── Search Input ─────────────────────────────────────────────────────────────
 
 const TableSearchInput = ({
-    value,
-    onChange,
-    placeholder = 'Cari nama usaha…',
-    resultCount,
-    totalCount,
+    value, onChange, placeholder = 'Cari nama usaha…', resultCount, totalCount,
 }: {
-    value: string;
-    onChange: (v: string) => void;
-    placeholder?: string;
-    resultCount: number;
-    totalCount: number;
+    value: string; onChange: (v: string) => void;
+    placeholder?: string; resultCount: number; totalCount: number;
 }) =>
     React.createElement('div', { className: 'flex items-center gap-3' },
         React.createElement('div', { className: 'relative flex-1' },
@@ -122,8 +465,7 @@ const TableSearchInput = ({
                 )
             ),
             React.createElement('input', {
-                type: 'text',
-                value,
+                type: 'text', value,
                 onChange: (e: any) => onChange(e.target.value),
                 placeholder,
                 className: 'w-full rounded-xl border border-slate-300 bg-slate-50 pl-9 pr-9 py-2.5 text-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100',
@@ -147,6 +489,7 @@ const TableSearchInput = ({
 const exportToExcel = (items: BusinessItem[], filename: string, sheetLabel: string) => {
     const rows = items.map((item) => ({
         'Nama Usaha'      : item.name,
+        'Kategori'        : item.category || 'Usaha Lainnya',
         'Alamat'          : item.address || '',
         'Telepon'         : item.phone || '',
         'Email'           : item.email || '',
@@ -171,7 +514,6 @@ const exportToExcel = (items: BusinessItem[], filename: string, sheetLabel: stri
     ws['!cols'] = colKeys.map((key) => ({
         wch: Math.max(String(key).length, ...rows.map((r) => String(r[key] ?? '').length)) + 2,
     }));
-
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, sheetLabel);
     XLSX.writeFile(wb, `${filename}_${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -186,7 +528,7 @@ const ExportButton = ({ items, filename, sheetLabel }: { items: BusinessItem[]; 
         React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 20 20', fill: 'currentColor', className: 'w-4 h-4 shrink-0' },
             React.createElement('path', { fillRule: 'evenodd', d: 'M10 3a.75.75 0 01.75.75v10.638l3.96-4.158a.75.75 0 111.08 1.04l-5.25 5.5a.75.75 0 01-1.08 0l-5.25-5.5a.75.75 0 111.08-1.04l3.96 4.158V3.75A.75.75 0 0110 3z', clipRule: 'evenodd' })
         ),
-        React.createElement('span', null, 'Export Excel')
+        'Export Excel'
     );
 
 // ─── Detail Modal ─────────────────────────────────────────────────────────────
@@ -213,7 +555,12 @@ const DetailModal = ({ item, onClose }: { item: BusinessItem; onClose: () => voi
             React.createElement('div', { className: 'p-6 border-b border-slate-200 flex items-start justify-between gap-4' },
                 React.createElement('div', null,
                     React.createElement('h3', { className: 'text-base font-semibold text-slate-950' }, item.name),
-                    React.createElement('p', { className: 'text-sm text-slate-500 mt-0.5' }, item.address || 'Alamat tidak tersedia'),
+                    React.createElement('div', { className: 'flex items-center gap-2 mt-1 flex-wrap' },
+                        item.category ? React.createElement('span', {
+                            className: `inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${categoryBadgeClass(item.category)}`,
+                        }, `${CATEGORY_ICONS[item.category] || '📦'} ${item.category}`) : null,
+                        React.createElement('p', { className: 'text-sm text-slate-500' }, item.address || 'Alamat tidak tersedia')
+                    ),
                     item.rating ? React.createElement('div', { className: 'flex items-center gap-1.5 mt-1.5' },
                         React.createElement('span', { className: 'text-amber-400 text-sm' }, '★'),
                         React.createElement('span', { className: 'text-sm font-semibold text-slate-700' }, item.rating.toFixed(1)),
@@ -290,7 +637,6 @@ const Navbar = ({ activePage, onNavigate }: { activePage: Page; onNavigate: (p: 
         { id: 'dashboard', label: 'Dashboard' },
         { id: 'daftar',    label: 'Daftar Usaha' },
     ];
-
     return React.createElement('nav', { className: 'sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-slate-200 shadow-sm' },
         React.createElement('div', { className: 'mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16' },
             React.createElement('div', { className: 'flex items-center gap-3' },
@@ -329,6 +675,7 @@ const DashboardPage = () => {
     const [hasSearched, setHasSearched]         = useState(false);
     const [selectedItem, setSelectedItem]       = useState<BusinessItem | null>(null);
     const [nearbySearch, setNearbySearch]       = useState('');
+    const [locationLabel, setLocationLabel]     = useState('');
 
     const mapRef      = useRef<HTMLDivElement>(null);
     const mapInstance = useRef<L.Map | null>(null);
@@ -343,6 +690,16 @@ const DashboardPage = () => {
             else counts.low++;
         });
         return counts;
+    }, [nearbyItems]);
+
+    // Data kategori untuk chart & download
+    const categoryData = useMemo(() => {
+        const counts: Record<string, number> = {};
+        nearbyItems.forEach((item) => {
+            const cat = item.category || 'Usaha Lainnya';
+            counts[cat] = (counts[cat] || 0) + 1;
+        });
+        return Object.entries(counts).sort((a, b) => b[1] - a[1]);
     }, [nearbyItems]);
 
     const filteredNearbyItems = useMemo(() =>
@@ -396,6 +753,7 @@ const DashboardPage = () => {
             const { lat: rawLat, lon: rawLon, display_name } = results[0];
             const lat = parseFloat(rawLat), lon = parseFloat(rawLon);
             setCurrentPosition({ lat, lon });
+            setLocationLabel(searchTerm.trim());
             setStatusText(`Lokasi dipilih: ${display_name}`);
             if (mapInstance.current) {
                 mapInstance.current.flyTo([lat, lon], 14, { duration: 0.9 });
@@ -416,10 +774,7 @@ const DashboardPage = () => {
         try {
             const raw = await fetchJson(`${api.nearby}?lat=${lat}&lon=${lon}&radius=${parseInt(radius, 10)}`);
             const allItems: BusinessItem[] = Array.isArray(raw) ? raw : [];
-
-            // Filter defensif di sisi klien — buang usaha non-digital yang lolos backend
             const list = allItems.filter((item) => !isExcludedBusiness(item));
-
             setNearbyItems(list);
             setHasSearched(true);
             if (list.length) {
@@ -432,9 +787,7 @@ const DashboardPage = () => {
                                 return { color: '#eab308', fillColor: '#fef08a' };
                             return { color: '#ef4444', fillColor: '#fecaca' };
                         })();
-                        L.circleMarker([item.latitude, item.longitude], {
-                            radius: 7, ...markerColor, fillOpacity: 0.9,
-                        })
+                        L.circleMarker([item.latitude, item.longitude], { radius: 7, ...markerColor, fillOpacity: 0.9 })
                             .addTo(nearbyLayer.current!)
                             .bindPopup(`<strong>${item.name}</strong><br />${item.address || '—'}<br />Skor: ${item.digital_score}`);
                     }
@@ -455,8 +808,30 @@ const DashboardPage = () => {
 
     const exportFilename = `usaha_sekitar_${searchTerm.trim().replace(/\s+/g, '_') || 'wilayah'}_r${radius}m`;
 
+    // ── Tombol unduh gambar gabungan ──
+    const DownloadReportButton = () =>
+        React.createElement('button', {
+            onClick: () => downloadCombinedPNG({
+                locationLabel,
+                total,
+                high  : nearbyLevelCounts.high,
+                medium: nearbyLevelCounts.medium,
+                low   : nearbyLevelCounts.low,
+                pctHigh, pctMed, pctLow,
+                categoryData,
+            }),
+            className: 'shrink-0 flex items-center gap-1.5 rounded-xl border border-sky-300 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-700 hover:bg-sky-100 active:bg-sky-200 transition',
+            title: 'Unduh laporan distribusi + kategori sebagai PNG',
+        },
+            React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 20 20', fill: 'currentColor', className: 'w-4 h-4 shrink-0' },
+                React.createElement('path', { fillRule: 'evenodd', d: 'M10 3a.75.75 0 01.75.75v10.638l3.96-4.158a.75.75 0 111.08 1.04l-5.25 5.5a.75.75 0 01-1.08 0l-5.25-5.5a.75.75 0 111.08-1.04l3.96 4.158V3.75A.75.75 0 0110 3z', clipRule: 'evenodd' })
+            ),
+            'Unduh Laporan (.png)'
+        );
+
     return React.createElement('div', { className: 'mx-auto max-w-[1320px] px-4 py-8 sm:px-6 lg:px-8 space-y-6' },
 
+        // ── Search bar ──
         React.createElement('div', { className: 'rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-200 space-y-4' },
             React.createElement('h2', { className: 'text-base font-semibold text-slate-950' }, 'Cari Wilayah'),
             React.createElement('div', { className: 'flex flex-col sm:flex-row gap-3' },
@@ -471,7 +846,7 @@ const DashboardPage = () => {
                     value: radius, onChange: (e: any) => setRadius(e.target.value),
                     className: 'rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm outline-none focus:border-sky-500',
                 },
-                    ['1000', '1500', '2500','5000'].map((r) =>
+                    ['500', '1000', '1500', '2500', '5000'].map((r) =>
                         React.createElement('option', { key: r, value: r }, `${r} m`)
                     )
                 ),
@@ -483,49 +858,41 @@ const DashboardPage = () => {
             React.createElement('p', { className: 'rounded-xl bg-slate-100 px-4 py-2.5 text-sm text-slate-600' }, statusText)
         ),
 
+        // ── Map + Nearby table ──
         React.createElement('div', { className: 'grid gap-6 xl:grid-cols-[1.6fr_1fr]' },
             React.createElement('div', { className: 'rounded-[28px] bg-white p-4 shadow-sm ring-1 ring-slate-200' },
                 React.createElement('div', { id: 'map', ref: mapRef, className: 'h-[500px] w-full rounded-[20px] border border-slate-200 relative z-0' })
             ),
-
             React.createElement('div', { className: 'rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-200 flex flex-col gap-4' },
                 React.createElement('div', { className: 'flex items-center justify-between gap-3' },
                     React.createElement('h2', { className: 'text-base font-semibold text-slate-950' }, 'Usaha di Sekitar Wilayah'),
                     nearbyItems.length > 0
-                        ? React.createElement(ExportButton, {
-                            items: nearbyItems,
-                            filename: exportFilename,
-                            sheetLabel: 'Usaha Sekitar',
-                          })
+                        ? React.createElement(ExportButton, { items: nearbyItems, filename: exportFilename, sheetLabel: 'Usaha Sekitar' })
                         : null
                 ),
-
                 React.createElement('p', { className: 'rounded-xl bg-slate-100 px-4 py-2.5 text-sm text-slate-600' }, nearbySummary),
-
                 nearbyItems.length > 0
                     ? React.createElement(TableSearchInput, {
-                        value: nearbySearch,
-                        onChange: setNearbySearch,
+                        value: nearbySearch, onChange: setNearbySearch,
                         placeholder: 'Cari nama atau alamat usaha…',
-                        resultCount: filteredNearbyItems.length,
-                        totalCount: nearbyItems.length,
+                        resultCount: filteredNearbyItems.length, totalCount: nearbyItems.length,
                       })
                     : null,
-
                 React.createElement('div', { className: 'overflow-auto rounded-2xl border border-slate-200 max-h-[380px]' },
                     React.createElement('table', { className: 'w-full border-collapse text-sm' },
                         React.createElement('thead', { className: 'bg-slate-50 text-slate-500 sticky top-0' },
                             React.createElement('tr', null,
                                 React.createElement('th', { className: 'px-4 py-3 text-left font-semibold' }, 'Nama Usaha'),
+                                React.createElement('th', { className: 'px-4 py-3 text-left font-semibold hidden sm:table-cell' }, 'Kategori'),
                                 React.createElement('th', { className: 'px-4 py-3 text-center font-semibold w-16' }, 'Skor'),
-                                React.createElement('th', { className: 'px-4 py-3 text-left font-semibold' }, 'Level'),
+                                React.createElement('th', { className: 'px-4 py-3 text-left font-semibold hidden md:table-cell' }, 'Level'),
                                 React.createElement('th', { className: 'px-4 py-3 w-16' })
                             )
                         ),
                         React.createElement('tbody', null,
                             filteredNearbyItems.length === 0
                                 ? React.createElement('tr', null,
-                                    React.createElement('td', { colSpan: 4, className: 'px-4 py-10 text-center text-slate-400' },
+                                    React.createElement('td', { colSpan: 5, className: 'px-4 py-10 text-center text-slate-400' },
                                         nearbyItems.length === 0
                                             ? 'Pilih wilayah dan tekan "Cari Usaha Sekitar".'
                                             : `Tidak ada usaha yang cocok dengan "${nearbySearch}".`
@@ -541,8 +908,17 @@ const DashboardPage = () => {
                                                 item.rating ? React.createElement('span', { className: 'ml-1.5 text-xs text-amber-500' }, `★ ${item.rating.toFixed(1)}`) : null
                                             )
                                         ),
+                                        React.createElement('td', { className: 'px-4 py-3 hidden sm:table-cell' },
+                                            React.createElement('span', {
+                                                className: `inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${categoryBadgeClass(item.category)}`,
+                                            },
+                                                CATEGORY_ICONS[item.category || ''] || '📦',
+                                                ' ',
+                                                item.category || 'Usaha Lainnya'
+                                            )
+                                        ),
                                         React.createElement('td', { className: 'px-4 py-3 text-center tabular-nums font-semibold text-sky-700' }, item.digital_score),
-                                        React.createElement('td', { className: 'px-4 py-3' },
+                                        React.createElement('td', { className: 'px-4 py-3 hidden md:table-cell' },
                                             React.createElement('span', { className: `inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${levelBadgeClass(item.digital_level)}` }, item.digital_level)
                                         ),
                                         React.createElement('td', { className: 'px-4 py-3' },
@@ -559,74 +935,131 @@ const DashboardPage = () => {
             )
         ),
 
-        React.createElement('div', { className: 'rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-200 space-y-4' },
-            React.createElement('div', { className: 'flex items-center justify-between' },
-                React.createElement('h2', { className: 'text-base font-semibold text-slate-950' }, 'Distribusi Level Digital Wilayah'),
-                React.createElement('span', { className: 'text-xs text-slate-400' },
-                    hasSearched ? `Berdasarkan ${total} usaha di wilayah yang dipilih` : 'Belum ada data — cari wilayah terlebih dahulu'
-                )
-            ),
-            React.createElement('div', { className: 'grid gap-4 sm:grid-cols-3' },
-                React.createElement(StatCard, { label: 'Tinggi / Sangat Tinggi', value: nearbyLevelCounts.high }),
-                React.createElement(StatCard, { label: 'Sedang', value: nearbyLevelCounts.medium }),
-                React.createElement(StatCard, { label: 'Rendah', value: nearbyLevelCounts.low })
-            ),
-            hasSearched && total > 0
-                ? React.createElement('div', { className: 'space-y-2' },
-                    React.createElement('div', { className: 'flex h-3 w-full overflow-hidden rounded-full bg-slate-100' },
-                        React.createElement('div', { style: { width: `${pctHigh}%` }, className: 'bg-emerald-400 transition-all' }),
-                        React.createElement('div', { style: { width: `${pctMed}%` },  className: 'bg-amber-400 transition-all' }),
-                        React.createElement('div', { style: { width: `${pctLow}%` },  className: 'bg-rose-400 transition-all' })
+        // ── Distribusi Level Digital + Bar Chart Kategori dalam satu card ──
+        React.createElement('div', { className: 'rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-200 space-y-6' },
+
+            // Header card gabungan + satu tombol unduh
+            React.createElement('div', { className: 'flex items-start justify-between gap-4 flex-wrap' },
+                React.createElement('div', null,
+                    React.createElement('h2', { className: 'text-base font-semibold text-slate-950' },
+                        locationLabel ? `Analisis Digitalisasi — ${locationLabel}` : 'Analisis Digitalisasi Wilayah'
                     ),
-                    React.createElement('div', { className: 'flex gap-4 text-xs text-slate-500' },
-                        React.createElement('span', null, React.createElement('span', { className: 'text-emerald-600 font-semibold' }, `${pctHigh}%`), ' Tinggi'),
-                        React.createElement('span', null, React.createElement('span', { className: 'text-amber-600 font-semibold' }, `${pctMed}%`),  ' Sedang'),
-                        React.createElement('span', null, React.createElement('span', { className: 'text-rose-600 font-semibold' },   `${pctLow}%`),  ' Rendah')
+                    React.createElement('p', { className: 'text-xs text-slate-400 mt-0.5' },
+                        hasSearched && total > 0
+                            ? `${total} usaha · ${categoryData.length} kategori`
+                            : 'Cari wilayah terlebih dahulu untuk melihat analisis'
                     )
-                )
-                : React.createElement('div', { className: 'rounded-xl border-2 border-dashed border-slate-200 py-8 text-center text-sm text-slate-400' },
-                    'Grafik distribusi akan muncul setelah pencarian wilayah berhasil.')
+                ),
+                // Satu tombol unduh untuk keduanya
+                hasSearched && total > 0 ? React.createElement(DownloadReportButton, null) : null
+            ),
+
+            // ── Sub-section: Distribusi Level ──
+            React.createElement('div', { className: 'space-y-3' },
+                React.createElement('p', { className: 'text-sm font-semibold text-slate-700' }, 'Distribusi Level Digital'),
+                React.createElement('div', { className: 'grid gap-4 sm:grid-cols-3' },
+                    React.createElement(StatCard, { label: 'Tinggi / Sangat Tinggi', value: nearbyLevelCounts.high }),
+                    React.createElement(StatCard, { label: 'Sedang',                  value: nearbyLevelCounts.medium }),
+                    React.createElement(StatCard, { label: 'Rendah',                  value: nearbyLevelCounts.low })
+                ),
+                hasSearched && total > 0
+                    ? React.createElement('div', { className: 'space-y-2' },
+                        React.createElement('div', { className: 'flex h-3 w-full overflow-hidden rounded-full bg-slate-100' },
+                            React.createElement('div', { style: { width: `${pctHigh}%` }, className: 'bg-emerald-400 transition-all' }),
+                            React.createElement('div', { style: { width: `${pctMed}%` },  className: 'bg-amber-400 transition-all' }),
+                            React.createElement('div', { style: { width: `${pctLow}%` },  className: 'bg-rose-400 transition-all' })
+                        ),
+                        React.createElement('div', { className: 'flex gap-4 text-xs text-slate-500' },
+                            React.createElement('span', null, React.createElement('span', { className: 'text-emerald-600 font-semibold' }, `${pctHigh}%`), ' Tinggi'),
+                            React.createElement('span', null, React.createElement('span', { className: 'text-amber-600 font-semibold' }, `${pctMed}%`),  ' Sedang'),
+                            React.createElement('span', null, React.createElement('span', { className: 'text-rose-600 font-semibold' },   `${pctLow}%`),  ' Rendah')
+                        )
+                    )
+                    : React.createElement('div', { className: 'rounded-xl border-2 border-dashed border-slate-200 py-8 text-center text-sm text-slate-400' },
+                        'Grafik distribusi akan muncul setelah pencarian wilayah berhasil.')
+            ),
+
+            // Divider
+            hasSearched && total > 0
+                ? React.createElement('hr', { className: 'border-slate-100' })
+                : null,
+
+            // ── Sub-section: Bar Chart Kategori ──
+            React.createElement('div', { className: 'space-y-3' },
+                React.createElement('p', { className: 'text-sm font-semibold text-slate-700' }, 'Perbandingan Usaha per Kategori'),
+                !hasSearched || total === 0
+                    ? React.createElement('div', { className: 'rounded-xl border-2 border-dashed border-slate-200 py-10 text-center text-sm text-slate-400' },
+                        'Bar chart akan muncul setelah pencarian wilayah berhasil.')
+                    : React.createElement('div', { className: 'overflow-x-auto' },
+                        React.createElement('div', { style: { minWidth: '420px' } },
+                            ...categoryData.slice(0, 15).map(([cat, count]) => {
+                                const maxC  = categoryData[0]?.[1] ?? 1;
+                                const pct   = Math.round((count / total) * 100);
+                                const barPct = Math.max(1, Math.round((count / maxC) * 100));
+                                const color  = categoryBarColor(cat);
+                                const icon   = CATEGORY_ICONS[cat] || '📦';
+
+                                return React.createElement('div', { key: cat, className: 'flex items-center gap-3 mb-2.5' },
+                                    // Label
+                                    React.createElement('div', { className: 'shrink-0 w-44 text-right' },
+                                        React.createElement('span', { className: 'text-xs text-slate-600 truncate block' }, `${icon} ${cat}`)
+                                    ),
+                                    // Track + bar
+                                    React.createElement('div', { className: 'flex-1 relative h-6 rounded-full bg-slate-100 overflow-hidden' },
+                                        React.createElement('div', {
+                                            className: 'absolute inset-y-0 left-0 rounded-full transition-all duration-500',
+                                            style: { width: `${barPct}%`, backgroundColor: color },
+                                        })
+                                    ),
+                                    // Count + pct
+                                    React.createElement('div', { className: 'shrink-0 w-16 text-left' },
+                                        React.createElement('span', { className: 'text-xs font-semibold text-slate-800' }, count),
+                                        React.createElement('span', { className: 'text-xs text-slate-400 ml-1' }, `${pct}%`)
+                                    )
+                                );
+                            })
+                        )
+                    )
+            )
         ),
 
         selectedItem ? React.createElement(DetailModal, { item: selectedItem, onClose: () => setSelectedItem(null) }) : null,
 
         (isGeocodingLoading || isNearbyLoading) ? React.createElement('div', {
-        className: 'fixed inset-0 z-[9999] flex items-center justify-center'
-    },
-        React.createElement('div', { className: 'absolute inset-0 bg-slate-950/60 backdrop-blur-sm' }),
-        React.createElement('div', {
-            className: 'relative z-10 flex flex-col items-center gap-6 rounded-3xl bg-white px-10 py-8 shadow-2xl shadow-slate-950/20 ring-1 ring-slate-200 min-w-[260px]'
+            className: 'fixed inset-0 z-[9999] flex items-center justify-center'
         },
-            React.createElement('div', { className: 'relative w-16 h-16' },
-                React.createElement('div', { className: 'absolute inset-0 rounded-full border-4 border-slate-100' }),
-                React.createElement('div', { className: 'absolute inset-0 rounded-full border-4 border-transparent border-t-sky-500 border-r-sky-300 animate-spin' }),
-                React.createElement('div', {
-                    className: 'absolute inset-2 rounded-full border-4 border-transparent border-b-indigo-500 border-l-indigo-300',
-                    style: { animation: 'spin 1.2s linear infinite reverse' }
-                }),
-                React.createElement('div', { className: 'absolute inset-[22px] rounded-full bg-sky-500 animate-pulse' })
-            ),
-            React.createElement('div', { className: 'text-center space-y-1' },
-                React.createElement('p', { className: 'text-sm font-semibold text-slate-900' },
-                    isGeocodingLoading ? 'Mencari Lokasi' : 'Memuat Data Usaha'
-                ),
-                React.createElement('p', { className: 'text-xs text-slate-500' },
-                    isGeocodingLoading
-                        ? 'Menghubungi layanan geocoding…'
-                        : 'Mengambil data dari Google Maps…'
-                )
-            ),
-            React.createElement('div', { className: 'flex items-center gap-1.5' },
-                ...[0, 1, 2].map((i) =>
+            React.createElement('div', { className: 'absolute inset-0 bg-slate-950/60 backdrop-blur-sm' }),
+            React.createElement('div', {
+                className: 'relative z-10 flex flex-col items-center gap-6 rounded-3xl bg-white px-10 py-8 shadow-2xl shadow-slate-950/20 ring-1 ring-slate-200 min-w-[260px]'
+            },
+                React.createElement('div', { className: 'relative w-16 h-16' },
+                    React.createElement('div', { className: 'absolute inset-0 rounded-full border-4 border-slate-100' }),
+                    React.createElement('div', { className: 'absolute inset-0 rounded-full border-4 border-transparent border-t-sky-500 border-r-sky-300 animate-spin' }),
                     React.createElement('div', {
-                        key: i,
-                        className: 'w-1.5 h-1.5 rounded-full bg-sky-400',
-                        style: { animation: `pulse 1.2s ease-in-out infinite`, animationDelay: `${i * 0.2}s` }
-                    })
+                        className: 'absolute inset-2 rounded-full border-4 border-transparent border-b-indigo-500 border-l-indigo-300',
+                        style: { animation: 'spin 1.2s linear infinite reverse' }
+                    }),
+                    React.createElement('div', { className: 'absolute inset-[22px] rounded-full bg-sky-500 animate-pulse' })
+                ),
+                React.createElement('div', { className: 'text-center space-y-1' },
+                    React.createElement('p', { className: 'text-sm font-semibold text-slate-900' },
+                        isGeocodingLoading ? 'Mencari Lokasi' : 'Memuat Data Usaha'
+                    ),
+                    React.createElement('p', { className: 'text-xs text-slate-500' },
+                        isGeocodingLoading ? 'Menghubungi layanan geocoding…' : 'Mengambil data dari Google Maps…'
+                    )
+                ),
+                React.createElement('div', { className: 'flex items-center gap-1.5' },
+                    ...[0, 1, 2].map((i) =>
+                        React.createElement('div', {
+                            key: i,
+                            className: 'w-1.5 h-1.5 rounded-full bg-sky-400',
+                            style: { animation: 'pulse 1.2s ease-in-out infinite', animationDelay: `${i * 0.2}s` }
+                        })
+                    )
                 )
             )
-        )
-    ) : null
+        ) : null
     );
 };
 
@@ -686,7 +1119,6 @@ const DaftarUsahaPage = () => {
         ),
 
         React.createElement('div', { className: 'rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-200 space-y-4' },
-
             React.createElement('div', { className: 'flex items-center justify-between gap-4 flex-wrap' },
                 React.createElement('div', null,
                     React.createElement('h2', { className: 'text-base font-semibold text-slate-950' }, 'Daftar Usaha yang Ditambahkan'),
@@ -694,11 +1126,7 @@ const DaftarUsahaPage = () => {
                 ),
                 React.createElement('div', { className: 'flex items-center gap-2' },
                     !loading && businesses.length > 0
-                        ? React.createElement(ExportButton, {
-                            items: businesses,
-                            filename: 'daftar_usaha',
-                            sheetLabel: 'Daftar Usaha',
-                          })
+                        ? React.createElement(ExportButton, { items: businesses, filename: 'daftar_usaha', sheetLabel: 'Daftar Usaha' })
                         : null,
                     React.createElement('button', {
                         onClick: () => setShowModal(true),
@@ -709,11 +1137,9 @@ const DaftarUsahaPage = () => {
 
             !loading && businesses.length > 0
                 ? React.createElement(TableSearchInput, {
-                    value: daftarSearch,
-                    onChange: setDaftarSearch,
+                    value: daftarSearch, onChange: setDaftarSearch,
                     placeholder: 'Cari nama atau alamat usaha…',
-                    resultCount: filteredBusinesses.length,
-                    totalCount: businesses.length,
+                    resultCount: filteredBusinesses.length, totalCount: businesses.length,
                   })
                 : null,
 
@@ -749,7 +1175,6 @@ const DaftarUsahaPage = () => {
                                         b.facebook && 'Facebook', b.shopee && 'Shopee',
                                         b.tokopedia && 'Tokopedia', b.tiktok && 'TikTok', b.whatsapp && 'WhatsApp',
                                     ].filter(Boolean);
-
                                     return React.createElement('tr', {
                                         key: `${b.id}-${idx}`,
                                         className: 'border-t border-slate-100 hover:bg-slate-50 transition',
@@ -760,10 +1185,7 @@ const DaftarUsahaPage = () => {
                                             platforms.length > 0
                                                 ? React.createElement('div', { className: 'flex flex-wrap gap-1' },
                                                     platforms.map((p) =>
-                                                        React.createElement('span', {
-                                                            key: p,
-                                                            className: 'inline-block rounded-full bg-sky-50 border border-sky-200 text-sky-700 text-xs px-2 py-0.5 font-medium',
-                                                        }, p)
+                                                        React.createElement('span', { key: p, className: 'inline-block rounded-full bg-sky-50 border border-sky-200 text-sky-700 text-xs px-2 py-0.5 font-medium' }, p)
                                                     )
                                                 )
                                                 : React.createElement('span', { className: 'text-slate-400 text-xs' }, 'Tidak ada')
@@ -813,7 +1235,6 @@ const DaftarUsahaPage = () => {
 
 const App = () => {
     const [page, setPage] = useState<Page>('dashboard');
-
     return React.createElement('div', { className: 'min-h-screen bg-slate-50 text-slate-900 antialiased' },
         React.createElement(Navbar, { activePage: page, onNavigate: setPage }),
         page === 'dashboard'

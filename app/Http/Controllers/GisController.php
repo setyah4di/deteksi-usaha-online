@@ -62,6 +62,37 @@ class GisController extends Controller
         'pemadam kebakaran', 'damkar', 'pdam',
     ];
 
+    /**
+     * Peta tipe Google Places → label kategori usaha (Bahasa Indonesia).
+     * Urutan penting: tipe lebih spesifik diprioritaskan (key pertama yang cocok menang).
+     */
+    private const CATEGORY_MAP = [
+        // Makanan & Minuman
+        'restaurant'    => 'Restoran & Rumah Makan',
+        'cafe'          => 'Kafe & Minuman',
+        'bakery'        => 'Bakeri & Roti',
+        'bar'           => 'Bar & Minuman',
+        'meal_takeaway' => 'Makanan Siap Saji',
+        'food'          => 'Makanan & Minuman',
+        // Ritel & Belanja
+        'supermarket'         => 'Supermarket & Swalayan',
+        'shopping_mall'       => 'Pusat Perbelanjaan',
+        'clothing_store'      => 'Toko Pakaian & Fashion',
+        'shoe_store'          => 'Toko Sepatu',
+        'electronics_store'   => 'Elektronik & Gadget',
+        'furniture_store'     => 'Furnitur & Perabot',
+        'hardware_store'      => 'Toko Bangunan & Material',
+        'home_goods_store'    => 'Peralatan Rumah Tangga',
+        'convenience_store'   => 'Minimarket & Toko Kelontong',
+        'store'               => 'Toko Umum',
+        // Kesehatan & Kecantikan
+        'pharmacy'     => 'Apotek & Toko Obat',
+        'drugstore'    => 'Apotek & Toko Obat',
+        'beauty_salon' => 'Salon & Kecantikan',
+        // Jasa
+        'laundry' => 'Laundry & Cuci Baju',
+    ];
+
     // Field detail yang diambil — hanya yang benar-benar dipakai
     private const DETAIL_FIELDS = 'name,formatted_address,geometry,website,formatted_phone_number,url,opening_hours,rating,user_ratings_total,types';
 
@@ -159,6 +190,17 @@ class GisController extends Controller
         Cache::put($cacheKey, $results, now()->addHour());
 
         return Response::json($results);
+    }
+
+    // ── Tentukan kategori usaha dari types Google Places ──────────────────────
+    private function resolveCategory(array $types): string
+    {
+        foreach (self::CATEGORY_MAP as $type => $label) {
+            if (in_array($type, $types, true)) {
+                return $label;
+            }
+        }
+        return 'Usaha Lainnya';
     }
 
     // ── Cek apakah sebuah place harus dikecualikan ────────────────────────
@@ -342,6 +384,13 @@ class GisController extends Controller
                 }
             }
 
+            // Gabungkan types Nearby + Detail untuk resolusi kategori terbaik
+            $allTypes = array_unique(array_merge(
+                $place['types'] ?? [],
+                $detail['types'] ?? []
+            ));
+            $category = $this->resolveCategory($allTypes);
+
             $score = Business::computeDigitalScore([
                 'website'       => $website,
                 'facebook'      => $facebook,
@@ -356,6 +405,7 @@ class GisController extends Controller
             $results[] = [
                 'id'              => $pid,
                 'type'            => 'google_place',
+                'category'        => $category,
                 'name'            => $place['name'] ?? 'Usaha Tanpa Nama',
                 'address'         => $detail['formatted_address'] ?? ($place['vicinity'] ?? null),
                 'latitude'        => $loc['lat'] ?? null,
