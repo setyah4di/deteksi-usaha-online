@@ -280,14 +280,20 @@ export default function BusinessForm({
     onSaved,
     onCancel,
     initial = {},
+    mode = 'create',
 }: {
     onSaved?: () => void;
     onCancel?: (() => void) | null;
-    initial?: Partial<typeof initialFormState>;
+    initial?: Partial<typeof initialFormState> & { id?: number | string };
+    mode?: 'create' | 'edit';
 }) {
     const [form, setForm]       = useState({ ...initialFormState, ...initial });
     const [message, setMessage] = useState('');
     const [loading, setLoading] = useState(false);
+
+    React.useEffect(() => {
+        setForm({ ...initialFormState, ...initial });
+    }, [initial]);
 
     const set = (k: string, v: string) => setForm((p) => ({ ...p, [k]: v }));
 
@@ -298,10 +304,19 @@ export default function BusinessForm({
         setLoading(true);
         try {
             const payload = Object.fromEntries(
-                Object.entries(form).filter(([, v]) => v && v.toString().trim())
+                Object.entries(form)
+                    .filter(([key]) => key !== 'id')
+                    .map(([key, value]) => [
+                        key,
+                        typeof value === 'string'
+                            ? (value.trim() === '' ? null : value.trim())
+                            : value,
+                    ])
             );
-            await fetchJson('/api/businesses', {
-                method: 'POST',
+            const isEdit = mode === 'edit' || Boolean((initial as any).id);
+            const endpoint = isEdit ? `/api/businesses/${(initial as any).id}` : '/api/businesses';
+            await fetchJson(endpoint, {
+                method: isEdit ? 'PUT' : 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRF-TOKEN':
@@ -377,7 +392,7 @@ export default function BusinessForm({
                 React.createElement('button', {
                     type: 'submit', disabled: loading,
                     className: 'rounded-xl bg-sky-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:opacity-60',
-                }, loading ? 'Menyimpan…' : 'Simpan Usaha')
+                }, loading ? 'Menyimpan…' : (mode === 'edit' || Boolean((initial as any).id) ? 'Perbarui Usaha' : 'Simpan Usaha'))
             )
         ),
 

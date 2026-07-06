@@ -459,6 +459,42 @@ class GisController extends Controller
         return Response::json(Business::create($validated), 201);
     }
 
+    public function update(Request $request, Business $business)
+    {
+        $validated = $request->validate([
+            'name'      => ['nullable', 'string', 'max:255'],
+            'address'   => ['nullable', 'string', 'max:1024'],
+            'latitude'  => ['nullable', 'numeric'],
+            'longitude' => ['nullable', 'numeric'],
+            'website'   => ['nullable', 'string', 'max:255'],
+            'instagram' => ['nullable', 'string', 'max:255'],
+            'facebook'  => ['nullable', 'string', 'max:255'],
+            'whatsapp'  => ['nullable', 'string', 'max:255'],
+            'shopee'    => ['nullable', 'string', 'max:255'],
+            'tokopedia' => ['nullable', 'string', 'max:255'],
+            'tiktok'    => ['nullable', 'string', 'max:255'],
+        ]);
+
+        if (empty($validated['name'])) {
+            $validated['name'] = $business->name;
+        }
+
+        $score                      = Business::computeDigitalScore($validated);
+        $validated['digital_score'] = $score;
+        $validated['digital_level'] = Business::buildDigitalLevel($score);
+
+        $business->update($validated);
+
+        return Response::json($business->fresh(), 200);
+    }
+
+    public function destroy(Business $business)
+    {
+        $business->delete();
+
+        return Response::json(['deleted' => true], 200);
+    }
+
     public function stats()
     {
         $stats = Business::query()

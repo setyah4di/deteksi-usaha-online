@@ -9,4 +9,6 @@ Route::get('/api/geocode', [GisController::class, 'geocode']);
 Route::get('/api/nearby', [GisController::class, 'nearby']);
 Route::get('/api/businesses', [GisController::class, 'list']);
 Route::post('/api/businesses', [GisController::class, 'store']);
+Route::put('/api/businesses/{business}', [GisController::class, 'update']);
+Route::delete('/api/businesses/{business}', [GisController::class, 'destroy']);
 Route::get('/api/stats', [GisController::class, 'stats']);

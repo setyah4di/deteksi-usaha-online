@@ -1070,7 +1070,9 @@ const DaftarUsahaPage = () => {
     const [stats, setStats]               = useState<any>({ total: 0, online_presence: 0, average_score: 0 });
     const [loading, setLoading]           = useState(true);
     const [showModal, setShowModal]       = useState(false);
+    const [editingBusiness, setEditingBusiness] = useState<BusinessItem | null>(null);
     const [selectedItem, setSelectedItem] = useState<BusinessItem | null>(null);
+    const [pendingDelete, setPendingDelete] = useState<BusinessItem | null>(null);
     const [daftarSearch, setDaftarSearch] = useState('');
 
     useEffect(() => {
@@ -1095,7 +1097,32 @@ const DaftarUsahaPage = () => {
         try { setStats(await fetchJson(api.stats)); } catch (e) { console.warn(e); }
     };
 
-    const handleSaved = async () => { setShowModal(false); await loadAll(); };
+    const closeModal = () => {
+        setShowModal(false);
+        setEditingBusiness(null);
+    };
+
+    const handleSaved = async () => { closeModal(); await loadAll(); };
+
+    const handleDelete = async (business: BusinessItem) => {
+        if (!business.id) return;
+
+        try {
+            await fetchJson(`/api/businesses/${business.id}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN':
+                        (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)
+                            ?.content || '',
+                },
+            });
+            setPendingDelete(null);
+            await loadAll();
+        } catch (e: any) {
+            window.alert(e?.message || 'Gagal menghapus usaha.');
+        }
+    };
 
     const filteredBusinesses = useMemo(() =>
         daftarSearch.trim()
@@ -1129,7 +1156,10 @@ const DaftarUsahaPage = () => {
                         ? React.createElement(ExportButton, { items: businesses, filename: 'daftar_usaha', sheetLabel: 'Daftar Usaha' })
                         : null,
                     React.createElement('button', {
-                        onClick: () => setShowModal(true),
+                        onClick: () => {
+                            setEditingBusiness(null);
+                            setShowModal(true);
+                        },
                         className: 'shrink-0 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700',
                     }, '+ Tambah Usaha')
                 )
@@ -1154,13 +1184,13 @@ const DaftarUsahaPage = () => {
                                 React.createElement('th', { className: 'px-4 py-3 text-left font-semibold hidden sm:table-cell' }, 'Platform Online'),
                                 React.createElement('th', { className: 'px-4 py-3 text-center font-semibold w-16' }, 'Skor'),
                                 React.createElement('th', { className: 'px-4 py-3 text-left font-semibold' }, 'Level'),
-                                React.createElement('th', { className: 'px-4 py-3 w-16' })
+                                React.createElement('th', { className: 'px-4 py-3 text-center font-semibold w-28' }, 'Aksi')
                             )
                         ),
                         React.createElement('tbody', null,
                             filteredBusinesses.length === 0
                                 ? React.createElement('tr', null,
-                                    React.createElement('td', { colSpan: 6, className: 'px-4 py-16 text-center text-slate-400' },
+                                    React.createElement('td', { colSpan: 7, className: 'px-4 py-16 text-center text-slate-400' },
                                         businesses.length === 0
                                             ? React.createElement('div', { className: 'space-y-2' },
                                                 React.createElement('p', { className: 'font-medium' }, 'Belum ada usaha tersimpan.'),
@@ -1195,10 +1225,34 @@ const DaftarUsahaPage = () => {
                                             React.createElement('span', { className: `inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${levelBadgeClass(b.digital_level)}` }, b.digital_level)
                                         ),
                                         React.createElement('td', { className: 'px-4 py-3' },
-                                            React.createElement('button', {
-                                                onClick: () => setSelectedItem(b),
-                                                className: 'rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-sky-50 hover:text-sky-700 transition',
-                                            }, 'Detail')
+                                            React.createElement('div', { className: 'flex justify-center gap-2' },
+                                                React.createElement(ActionIconButton, {
+                                                    title: 'Detail',
+                                                    onClick: () => setSelectedItem(b),
+                                                    icon: React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 20 20', fill: 'currentColor', className: 'h-4 w-4' },
+                                                        React.createElement('path', { d: 'M10 4.5c-4.1 0-7.3 2.6-8.8 6.3a.75.75 0 000 .74C2.7 15.9 5.9 18.5 10 18.5s7.3-2.6 8.8-6.3a.75.75 0 000-.74C17.3 7.1 14.1 4.5 10 4.5zm0 1.5A5.5 5.5 0 0115.4 10 5.5 5.5 0 014.6 10 5.5 5.5 0 0110 6zm0 2.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5z' })
+                                                    ),
+                                                }),
+                                                React.createElement(ActionIconButton, {
+                                                    title: 'Edit',
+                                                    onClick: () => {
+                                                        setEditingBusiness(b);
+                                                        setShowModal(true);
+                                                    },
+                                                    className: 'text-amber-600 hover:text-amber-700 hover:bg-amber-50',
+                                                    icon: React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 20 20', fill: 'currentColor', className: 'h-4 w-4' },
+                                                        React.createElement('path', { d: 'M13.85 3.15a2.5 2.5 0 013.53 3.53l-7.05 7.05a.75.75 0 01-.35.2l-3.5 1.05a.75.75 0 01-.93-.93l1.05-3.5a.75.75 0 01.2-.35l7.05-7.05zM12.44 4.56L4.39 12.61l1.7 1.7 8.05-8.05-1.7-1.7z' })
+                                                    ),
+                                                }),
+                                                React.createElement(ActionIconButton, {
+                                                    title: 'Delete',
+                                                    onClick: () => setPendingDelete(b),
+                                                    className: 'text-rose-600 hover:text-rose-700 hover:bg-rose-50',
+                                                    icon: React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 20 20', fill: 'currentColor', className: 'h-4 w-4' },
+                                                        React.createElement('path', { d: 'M7.5 3.75A1.25 1.25 0 018.75 2.5h2.5a1.25 1.25 0 011.25 1.25V4h3.75a.75.75 0 010 1.5H4.25a.75.75 0 010-1.5H8V3.75zM5.25 6.5h9.5l-.6 9.1a1.75 1.75 0 01-1.74 1.6H7.59a1.75 1.75 0 01-1.74-1.6L5.25 6.5z' })
+                                                    ),
+                                                })
+                                            )
                                         )
                                     );
                                 })
@@ -1209,22 +1263,43 @@ const DaftarUsahaPage = () => {
 
         selectedItem ? React.createElement(DetailModal, { item: selectedItem, onClose: () => setSelectedItem(null) }) : null,
 
+        pendingDelete ? React.createElement('div', { className: 'fixed inset-0 z-[99999] flex items-center justify-center' },
+            React.createElement('div', { className: 'absolute inset-0 bg-slate-950/50', onClick: () => setPendingDelete(null) }),
+            React.createElement('div', { className: 'relative z-[100000] w-full max-w-md mx-4 rounded-[24px] bg-white p-6 shadow-2xl' },
+                React.createElement('div', { className: 'flex items-center gap-3' },
+                    React.createElement('div', { className: 'flex h-11 w-11 items-center justify-center rounded-full bg-rose-50 text-rose-600' },
+                        React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 20 20', fill: 'currentColor', className: 'h-5 w-5' },
+                            React.createElement('path', { d: 'M8.5 3.75A1.25 1.25 0 019.75 2.5h.5a1.25 1.25 0 011.25 1.25V4h7.5v-.25A1.25 1.25 0 0119.25 2.5h.5A1.25 1.25 0 0121 3.75V4h2.25a.75.75 0 010 1.5H2.75a.75.75 0 010-1.5H5V3.75zM4.25 7.5h11.5l-.6 9.1a1.75 1.75 0 01-1.74 1.6H6.59a1.75 1.75 0 01-1.74-1.6L4.25 7.5z' })
+                        )
+                    ),
+                    React.createElement('div', null,
+                        React.createElement('h3', { className: 'text-base font-semibold text-slate-950' }, 'Hapus usaha?'),
+                        React.createElement('p', { className: 'text-sm text-slate-500 mt-1' }, `Yakin ingin menghapus "${pendingDelete?.name || 'usaha ini'}"?`) 
+                    )
+                ),
+                React.createElement('div', { className: 'mt-6 flex justify-end gap-3' },
+                    React.createElement('button', { onClick: () => setPendingDelete(null), className: 'rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50' }, 'Batal'),
+                    React.createElement('button', { onClick: () => pendingDelete && handleDelete(pendingDelete), className: 'rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700' }, 'Hapus')
+                )
+            )
+        ) : null,
+
         showModal ? React.createElement('div', { className: 'fixed inset-0 z-[99999] flex items-center justify-center' },
-            React.createElement('div', { className: 'absolute inset-0 bg-black/40', onClick: () => setShowModal(false) }),
+            React.createElement('div', { className: 'absolute inset-0 bg-black/40', onClick: closeModal }),
             React.createElement('div', { className: 'relative z-[100000] w-full max-w-2xl mx-4 bg-white rounded-[28px] shadow-2xl overflow-y-auto max-h-[90vh]' },
                 React.createElement('div', { className: 'p-6 border-b border-slate-200 flex items-center justify-between' },
                     React.createElement('div', null,
-                        React.createElement('h3', { className: 'text-base font-semibold text-slate-950' }, 'Tambah Usaha Baru'),
-                        React.createElement('p', { className: 'text-sm text-slate-500 mt-0.5' }, 'Isi detail usaha untuk menyimpannya ke database.')
+                        React.createElement('h3', { className: 'text-base font-semibold text-slate-950' }, editingBusiness ? 'Edit Usaha' : 'Tambah Usaha Baru'),
+                        React.createElement('p', { className: 'text-sm text-slate-500 mt-0.5' }, editingBusiness ? 'Perbarui detail usaha yang sudah tersimpan.' : 'Isi detail usaha untuk menyimpannya ke database.')
                     ),
-                    React.createElement('button', { onClick: () => setShowModal(false), className: 'rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition' },
+                    React.createElement('button', { onClick: closeModal, className: 'rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition' },
                         React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 20 20', fill: 'currentColor', className: 'w-5 h-5' },
                             React.createElement('path', { d: 'M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z' })
                         )
                     )
                 ),
                 React.createElement('div', { className: 'p-6' },
-                    React.createElement(BusinessForm, { onSaved: handleSaved, onCancel: () => setShowModal(false) })
+                    React.createElement(BusinessForm, { key: editingBusiness ? `edit-${editingBusiness.id}` : 'create', initial: editingBusiness || {}, onSaved: handleSaved, onCancel: closeModal, mode: editingBusiness ? 'edit' : 'create' })
                 )
             )
         ) : null
@@ -1232,6 +1307,14 @@ const DaftarUsahaPage = () => {
 };
 
 // ─── Root App ─────────────────────────────────────────────────────────────────
+
+const ActionIconButton = ({ icon, title, onClick, className }: { icon: React.ReactNode; title: string; onClick: () => void; className?: string }) =>
+    React.createElement('button', {
+        type: 'button',
+        title,
+        onClick,
+        className: `inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-50 hover:text-slate-900 ${className || ''}`,
+    }, icon);
 
 const App = () => {
     const [page, setPage] = useState<Page>('dashboard');
