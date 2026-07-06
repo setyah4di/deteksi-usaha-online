@@ -32,6 +32,74 @@ const fetchJson = async (url: string, options: RequestInit = {}) => {
     return data;
 };
 
+// ─── Design tokens (injected once) ─────────────────────────────────────────
+// A self-contained token layer so the redesign doesn't depend on editing
+// the shared Tailwind stylesheet. Palette: deep statistical navy as the
+// institutional voice, with emerald / amber / rose reserved strictly for
+// data meaning (digital-level), never for decoration.
+
+const DESIGN_TOKENS = `
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap');
+
+:root{
+  --navy-950:#071B33; --navy-900:#0B2A4A; --navy-800:#0F3D63; --navy-700:#14508C;
+  --navy-600:#1D6FB8; --navy-100:#E7EFF9; --navy-50:#F2F6FC;
+  --canvas:#F4F7FB; --line:#E2E8F0; --ink-900:#0F172A; --ink-500:#64748B;
+  --font-display:'Manrope',-apple-system,BlinkMacSystemFont,sans-serif;
+  --font-body:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,monospace;
+}
+.font-display{ font-family:var(--font-display); letter-spacing:-0.01em; }
+.font-body{ font-family:var(--font-body); }
+.font-data{ font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
+
+.tjb-btn{ display:inline-flex; align-items:center; justify-content:center; gap:.4rem;
+  border-radius:.85rem; font-weight:600; font-size:.875rem; padding:.65rem 1.1rem;
+  transition:all .15s ease; white-space:nowrap; }
+.tjb-btn:active{ transform:translateY(1px); }
+.tjb-btn-primary{ background:var(--navy-800); color:#fff; box-shadow:0 1px 2px rgba(15,61,99,.25); }
+.tjb-btn-primary:hover{ background:var(--navy-900); }
+.tjb-btn-outline{ background:#fff; color:var(--navy-800); border:1px solid var(--line); }
+.tjb-btn-outline:hover{ background:var(--navy-50); border-color:var(--navy-100); }
+.tjb-btn-ghost{ background:var(--navy-50); color:var(--navy-800); }
+.tjb-btn-ghost:hover{ background:var(--navy-100); }
+.tjb-btn-success{ background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; }
+.tjb-btn-success:hover{ background:#D1FAE5; }
+.tjb-btn-info{ background:var(--navy-50); color:var(--navy-700); border:1px solid var(--navy-100); }
+.tjb-btn-info:hover{ background:var(--navy-100); }
+.tjb-btn-danger{ background:#FFF1F2; color:#BE123C; }
+.tjb-btn-danger:hover{ background:#FFE4E6; }
+
+.tjb-card{ background:#fff; border-radius:1.75rem; border:1px solid var(--line);
+  box-shadow:0 1px 2px rgba(15,23,42,.04), 0 8px 24px -12px rgba(15,23,42,.08); }
+
+.tjb-focusable:focus-visible{ outline:2px solid var(--navy-600); outline-offset:2px; }
+
+.tjb-scroll::-webkit-scrollbar{ width:8px; height:8px; }
+.tjb-scroll::-webkit-scrollbar-track{ background:transparent; }
+.tjb-scroll::-webkit-scrollbar-thumb{ background:#CBD5E1; border-radius:99px; }
+.tjb-scroll::-webkit-scrollbar-thumb:hover{ background:#94A3B8; }
+
+@keyframes tjb-fade-in{ from{ opacity:0; transform:translateY(4px);} to{ opacity:1; transform:translateY(0);} }
+.tjb-fade-in{ animation:tjb-fade-in .2s ease-out; }
+
+@media (prefers-reduced-motion: reduce){
+  .tjb-fade-in{ animation:none; }
+  *{ transition-duration:0.01ms !important; animation-duration:0.01ms !important; }
+}
+`;
+
+const InjectDesignTokens = () => {
+    useEffect(() => {
+        if (document.getElementById('tjb-design-tokens')) return;
+        const style = document.createElement('style');
+        style.id = 'tjb-design-tokens';
+        style.innerHTML = DESIGN_TOKENS;
+        document.head.appendChild(style);
+    }, []);
+    return null;
+};
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Page = 'dashboard' | 'daftar';
@@ -86,6 +154,8 @@ const isExcludedBusiness = (item: BusinessItem): boolean => {
 };
 
 // ─── Category helpers ─────────────────────────────────────────────────────────
+// Category hues stay varied and semantic-neutral (identification only);
+// the institutional navy is reserved for chrome, nav, and primary actions.
 
 const CATEGORY_STYLE: Record<string, { badge: string; bar: string }> = {
     'Restoran & Rumah Makan'      : { badge: 'bg-orange-50 text-orange-700 border-orange-200',    bar: '#f97316' },
@@ -139,6 +209,67 @@ const categoryBadgeClass = (cat?: string) =>
 const categoryBarColor = (cat?: string) =>
     (CATEGORY_STYLE[cat || ''] ?? CATEGORY_STYLE['Usaha Lainnya']).bar;
 
+// ─── Signal bars — the app's visual signature ────────────────────────────────
+// The product measures "digital signal strength" of local businesses, so the
+// score is expressed the way people already read signal strength: rising bars.
+// Used consistently in tables, stat cards, and the detail modal.
+
+const LEVEL_BAR_COUNT: Record<string, number> = {
+    'Sangat Tinggi': 4, 'Tinggi': 3, 'Sedang': 2, 'Rendah': 1,
+};
+const LEVEL_COLOR: Record<string, string> = {
+    'Sangat Tinggi': '#10b981', 'Tinggi': '#10b981', 'Sedang': '#f59e0b', 'Rendah': '#f43f5e',
+};
+
+const SignalBars = ({ level, size = 'md' }: { level: string; size?: 'sm' | 'md' | 'lg' }) => {
+    const active = LEVEL_BAR_COUNT[level] ?? 1;
+    const color  = LEVEL_COLOR[level] ?? '#94a3b8';
+    const dims   = size === 'sm' ? [8, 11, 14, 17] : size === 'lg' ? [12, 17, 22, 27] : [10, 14, 18, 22];
+    const w      = size === 'sm' ? 3 : size === 'lg' ? 5 : 4;
+    return React.createElement('div', { className: 'flex items-end gap-[3px]', title: level },
+        dims.map((h, i) =>
+            React.createElement('span', {
+                key: i,
+                style: {
+                    width: w, height: h,
+                    background: i < active ? color : '#E2E8F0',
+                    borderRadius: 2,
+                },
+            })
+        )
+    );
+};
+
+// ─── Icon set (inline, stroke-based, no external icon library needed) ───────
+
+const Icon = {
+    search: (cls = 'w-4 h-4') => React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 20 20', fill: 'currentColor', className: cls },
+        React.createElement('path', { fillRule: 'evenodd', d: 'M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z', clipRule: 'evenodd' })),
+    close: (cls = 'w-4 h-4') => React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 20 20', fill: 'currentColor', className: cls },
+        React.createElement('path', { d: 'M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z' })),
+    download: (cls = 'w-4 h-4') => React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 20 20', fill: 'currentColor', className: cls },
+        React.createElement('path', { fillRule: 'evenodd', d: 'M10 3a.75.75 0 01.75.75v10.638l3.96-4.158a.75.75 0 111.08 1.04l-5.25 5.5a.75.75 0 01-1.08 0l-5.25-5.5a.75.75 0 111.08-1.04l3.96 4.158V3.75A.75.75 0 0110 3z', clipRule: 'evenodd' })),
+    pin: (cls = 'w-4 h-4') => React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, className: cls },
+        React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', d: 'M12 21s-7-6.5-7-11a7 7 0 1114 0c0 4.5-7 11-7 11z' }),
+        React.createElement('circle', { cx: 12, cy: 10, r: 2.4, strokeLinecap: 'round', strokeLinejoin: 'round' })),
+    radar: (cls = 'w-4 h-4') => React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, className: cls },
+        React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', d: 'M12 12l6-3M12 3v3M12 21a9 9 0 100-18 9 9 0 000 18z' })),
+    plus: (cls = 'w-4 h-4') => React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 20 20', fill: 'currentColor', className: cls },
+        React.createElement('path', { d: 'M10 4a.75.75 0 01.75.75v4.5h4.5a.75.75 0 010 1.5h-4.5v4.5a.75.75 0 01-1.5 0v-4.5h-4.5a.75.75 0 010-1.5h4.5v-4.5A.75.75 0 0110 4z' })),
+    eye: (cls = 'h-4 w-4') => React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 20 20', fill: 'currentColor', className: cls },
+        React.createElement('path', { d: 'M10 4.5c-4.1 0-7.3 2.6-8.8 6.3a.75.75 0 000 .74C2.7 15.9 5.9 18.5 10 18.5s7.3-2.6 8.8-6.3a.75.75 0 000-.74C17.3 7.1 14.1 4.5 10 4.5zm0 1.5A5.5 5.5 0 0115.4 10 5.5 5.5 0 014.6 10 5.5 5.5 0 0110 6zm0 2.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5z' })),
+    pencil: (cls = 'h-4 w-4') => React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 20 20', fill: 'currentColor', className: cls },
+        React.createElement('path', { d: 'M13.85 3.15a2.5 2.5 0 013.53 3.53l-7.05 7.05a.75.75 0 01-.35.2l-3.5 1.05a.75.75 0 01-.93-.93l1.05-3.5a.75.75 0 01.2-.35l7.05-7.05zM12.44 4.56L4.39 12.61l1.7 1.7 8.05-8.05-1.7-1.7z' })),
+    trash: (cls = 'h-4 w-4') => React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 20 20', fill: 'currentColor', className: cls },
+        React.createElement('path', { d: 'M7.5 3.75A1.25 1.25 0 018.75 2.5h2.5a1.25 1.25 0 011.25 1.25V4h3.75a.75.75 0 010 1.5H4.25a.75.75 0 010-1.5H8V3.75zM5.25 6.5h9.5l-.6 9.1a1.75 1.75 0 01-1.74 1.6H7.59a1.75 1.75 0 01-1.74-1.6L5.25 6.5z' })),
+    warn: (cls = 'h-5 w-5') => React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 20 20', fill: 'currentColor', className: cls },
+        React.createElement('path', { d: 'M8.5 3.75A1.25 1.25 0 019.75 2.5h.5a1.25 1.25 0 011.25 1.25V4h7.5v-.25A1.25 1.25 0 0119.25 2.5h.5A1.25 1.25 0 0121 3.75V4h2.25a.75.75 0 010 1.5H2.75a.75.75 0 010-1.5H5V3.75zM4.25 7.5h11.5l-.6 9.1a1.75 1.75 0 01-1.74 1.6H6.59a1.75 1.75 0 01-1.74-1.6L4.25 7.5z' })),
+    arrow: (cls = 'w-4 h-4') => React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 20 20', fill: 'currentColor', className: cls },
+        React.createElement('path', { fillRule: 'evenodd', d: 'M3 10a.75.75 0 01.75-.75h10.638L11.29 6.15a.75.75 0 111.04-1.08l5.5 5.25a.75.75 0 010 1.08l-5.5 5.25a.75.75 0 11-1.04-1.08l3.098-3.1H3.75A.75.75 0 013 10z', clipRule: 'evenodd' })),
+    inbox: (cls = 'w-10 h-10') => React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.4, className: cls },
+        React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', d: 'M3 12h4.5l1.5 3h6l1.5-3H21M3 12l1.8-6.3A2 2 0 016.72 4.2h10.56a2 2 0 011.92 1.5L21 12M3 12v6a2 2 0 002 2h14a2 2 0 002-2v-6' })),
+};
+
 // ─── Download PNG gabungan (distribusi + bar chart kategori) ─────────────────
 
 interface DownloadParams {
@@ -170,9 +301,9 @@ const downloadCombinedPNG = (p: DownloadParams) => {
     const BAR_H      = CHART_ROWS * ROW_H + 60; // 60 = header section
 
     // ── Footer ──
-    const FOOTER_H   = 36;
+    const FOOTER_H   = 40;
 
-    const TOTAL_H    = PAD + DIST_H + 24 + BAR_H + FOOTER_H + PAD;
+    const TOTAL_H    = PAD + 8 + DIST_H + 24 + BAR_H + FOOTER_H + PAD;
 
     const canvas  = document.createElement('canvas');
     canvas.width  = W * DPR;
@@ -181,8 +312,8 @@ const downloadCombinedPNG = (p: DownloadParams) => {
     ctx.scale(DPR, DPR);
 
     // ── Helpers ──
-    const font = (size: number, weight: string = '400') =>
-        `${weight} ${size}px -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`;
+    const font = (size: number, weight: string = '400', family: string = 'Inter') =>
+        `${weight} ${size}px "${family}", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`;
 
     const roundRect = (x: number, y: number, w: number, h: number, r: number, fill: string) => {
         ctx.beginPath();
@@ -201,19 +332,24 @@ const downloadCombinedPNG = (p: DownloadParams) => {
     };
 
     // ════════════════════════════════
-    // Background putih
+    // Background
     // ════════════════════════════════
-    ctx.fillStyle = '#f8fafc';
+    ctx.fillStyle = '#EEF3FA';
     ctx.fillRect(0, 0, W, TOTAL_H);
-    roundRect(PAD / 2, PAD / 2, W - PAD, TOTAL_H - PAD, 20, '#ffffff');
+    roundRect(PAD / 2, PAD / 2, W - PAD, TOTAL_H - PAD, 22, '#ffffff');
+
+    // Navy header band
+    roundRect(PAD / 2, PAD / 2, W - PAD, 64, 22, '#0B2A4A');
+    ctx.fillStyle = '#0B2A4A';
+    ctx.fillRect(PAD / 2, PAD / 2 + 32, W - PAD, 32);
 
     // ════════════════════════════════
     // Header global
     // ════════════════════════════════
-    let y = PAD + 10;
+    let y = PAD / 2 + 26;
 
-    ctx.font      = font(15, '700');
-    ctx.fillStyle = '#0f172a';
+    ctx.font      = font(15, '700', 'Manrope');
+    ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
     ctx.fillText(
         p.locationLabel
@@ -221,25 +357,26 @@ const downloadCombinedPNG = (p: DownloadParams) => {
             : 'Laporan Digitalisasi Usaha',
         W / 2, y
     );
-    y += 20;
+    y += 19;
 
-    ctx.font      = font(11);
-    ctx.fillStyle = '#94a3b8';
+    ctx.font      = font(10.5, '500');
+    ctx.fillStyle = '#AFC6E5';
     ctx.fillText(
         `${p.total} usaha terdeteksi · ${new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })}`,
         W / 2, y
     );
-    y += 28;
+
+    y = PAD / 2 + 64 + 26;
 
     // ════════════════════════════════
     // BAGIAN 1 — Distribusi Level Digital
     // ════════════════════════════════
 
     ctx.textAlign = 'left';
-    ctx.font      = font(12, '700');
-    ctx.fillStyle = '#1e293b';
+    ctx.font      = font(12, '700', 'Manrope');
+    ctx.fillStyle = '#0F172A';
     ctx.fillText('Distribusi Level Digital Wilayah', PAD, y);
-    ctx.font      = font(10);
+    ctx.font      = font(10, '500');
     ctx.fillStyle = '#94a3b8';
     ctx.fillText(`Berdasarkan ${p.total} usaha`, PAD, y + 16);
     y += 34;
@@ -255,14 +392,14 @@ const downloadCombinedPNG = (p: DownloadParams) => {
 
     cards.forEach(({ label, value, color, bg }, i) => {
         const cx = PAD + i * (CARD_W + 12);
-        roundRect(cx, y, CARD_W, CARD_H, 12, bg);
+        roundRect(cx, y, CARD_W, CARD_H, 14, bg);
 
-        ctx.font      = font(8.5, '600');
+        ctx.font      = font(8.5, '700');
         ctx.fillStyle = '#64748b';
         ctx.textAlign = 'left';
         ctx.fillText(label.toUpperCase(), cx + 14, y + 20);
 
-        ctx.font      = font(36, '800');
+        ctx.font      = font(34, '800', 'Manrope');
         ctx.fillStyle = color;
         ctx.fillText(String(value), cx + 14, y + 62);
 
@@ -325,7 +462,7 @@ const downloadCombinedPNG = (p: DownloadParams) => {
         ctx.arc(lx + 5, y + 5, 5, 0, Math.PI * 2);
         ctx.fillStyle = color;
         ctx.fill();
-        ctx.font      = font(11);
+        ctx.font      = font(11, '500');
         ctx.fillStyle = '#475569';
         ctx.textAlign = 'left';
         ctx.fillText(label, lx + 14, y + 9);
@@ -348,10 +485,10 @@ const downloadCombinedPNG = (p: DownloadParams) => {
     // ════════════════════════════════
 
     ctx.textAlign = 'left';
-    ctx.font      = font(12, '700');
-    ctx.fillStyle = '#1e293b';
+    ctx.font      = font(12, '700', 'Manrope');
+    ctx.fillStyle = '#0F172A';
     ctx.fillText('Perbandingan Usaha per Kategori', PAD, y);
-    ctx.font      = font(10);
+    ctx.font      = font(10, '500');
     ctx.fillStyle = '#94a3b8';
     ctx.fillText(`${p.categoryData.length} kategori`, PAD, y + 16);
     y += 34;
@@ -367,7 +504,7 @@ const downloadCombinedPNG = (p: DownloadParams) => {
         const pct   = p.total > 0 ? Math.round((count / p.total) * 100) : 0;
 
         // Label kiri (icon + nama kategori)
-        ctx.font      = font(11);
+        ctx.font      = font(11, '500');
         ctx.fillStyle = '#475569';
         ctx.textAlign = 'right';
         // Truncate panjang nama
@@ -385,13 +522,13 @@ const downloadCombinedPNG = (p: DownloadParams) => {
         roundRect(BAR_X, y + 8, barW, ROW_H - 16, 6, color);
 
         // Angka jumlah
-        ctx.font      = font(11, '700');
+        ctx.font      = font(11, '700', 'JetBrains Mono');
         ctx.fillStyle = '#1e293b';
         ctx.textAlign = 'left';
         ctx.fillText(String(count), BAR_X + barW + 8, midY + 4);
 
         // Persentase
-        ctx.font      = font(10);
+        ctx.font      = font(10, '500');
         ctx.fillStyle = '#94a3b8';
         ctx.fillText(`${pct}%`, BAR_X + barW + 36, midY + 4);
 
@@ -411,12 +548,13 @@ const downloadCombinedPNG = (p: DownloadParams) => {
     ctx.stroke();
     y += 16;
 
-    ctx.font      = font(9);
-    ctx.fillStyle = '#cbd5e1';
+    ctx.font      = font(9, '600', 'Manrope');
+    ctx.fillStyle = '#94a3b8';
     ctx.textAlign = 'left';
-    ctx.fillText('Pemetaan Usaha Digital', PAD, y + 6);
+    ctx.fillText('BPS Kabupaten Tanjung Jabung Barat · Pemetaan Usaha Digital', PAD, y + 6);
 
     ctx.textAlign = 'right';
+    ctx.font      = font(9, '500');
     ctx.fillText(
         `Diunduh: ${new Date().toLocaleString('id-ID', { dateStyle: 'long', timeStyle: 'short' })}`,
         W - PAD, y + 6
@@ -442,12 +580,25 @@ const levelBadgeClass = (level: string) => {
     return 'text-rose-700 bg-rose-50 border border-rose-200';
 };
 
-const StatCard = ({ label, value, dark = false }: { label: string; value: string | number; dark?: boolean }) =>
-    React.createElement('div',
-        { className: `rounded-2xl p-5 flex flex-col gap-2 ${dark ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-950'}` },
-        React.createElement('p', { className: `text-xs font-semibold uppercase tracking-widest ${dark ? 'text-slate-400' : 'text-slate-500'}` }, label),
-        React.createElement('p', { className: 'text-3xl font-bold tabular-nums' }, value)
+const StatCard = ({
+    label, value, icon, tone = 'navy',
+}: { label: string; value: string | number; icon?: React.ReactNode; tone?: 'navy' | 'emerald' | 'amber' | 'rose' }) => {
+    const toneMap: Record<string, { bg: string; ring: string; text: string; iconBg: string }> = {
+        navy   : { bg: 'bg-white', ring: 'ring-1 ring-[var(--line)]', text: 'text-[var(--ink-900)]', iconBg: 'bg-[var(--navy-50)] text-[var(--navy-800)]' },
+        emerald: { bg: 'bg-white', ring: 'ring-1 ring-emerald-100',   text: 'text-emerald-700',       iconBg: 'bg-emerald-50 text-emerald-600' },
+        amber  : { bg: 'bg-white', ring: 'ring-1 ring-amber-100',     text: 'text-amber-700',         iconBg: 'bg-amber-50 text-amber-600' },
+        rose   : { bg: 'bg-white', ring: 'ring-1 ring-rose-100',      text: 'text-rose-700',          iconBg: 'bg-rose-50 text-rose-600' },
+    };
+    const t = toneMap[tone];
+    return React.createElement('div',
+        { className: `rounded-2xl p-5 flex items-center gap-4 ${t.bg} ${t.ring} shadow-sm` },
+        icon ? React.createElement('div', { className: `flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${t.iconBg}` }, icon) : null,
+        React.createElement('div', { className: 'min-w-0' },
+            React.createElement('p', { className: 'text-[11px] font-semibold uppercase tracking-widest text-[var(--ink-500)] truncate' }, label),
+            React.createElement('p', { className: `font-data text-2xl font-bold ${t.text}` }, value)
+        )
     );
+};
 
 // ─── Search Input ─────────────────────────────────────────────────────────────
 
@@ -459,27 +610,22 @@ const TableSearchInput = ({
 }) =>
     React.createElement('div', { className: 'flex items-center gap-3' },
         React.createElement('div', { className: 'relative flex-1' },
-            React.createElement('div', { className: 'pointer-events-none absolute inset-y-0 left-3 flex items-center' },
-                React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 20 20', fill: 'currentColor', className: 'w-4 h-4 text-slate-400' },
-                    React.createElement('path', { fillRule: 'evenodd', d: 'M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z', clipRule: 'evenodd' })
-                )
+            React.createElement('div', { className: 'pointer-events-none absolute inset-y-0 left-3 flex items-center text-[var(--ink-500)]' },
+                Icon.search('w-4 h-4')
             ),
             React.createElement('input', {
                 type: 'text', value,
                 onChange: (e: any) => onChange(e.target.value),
                 placeholder,
-                className: 'w-full rounded-xl border border-slate-300 bg-slate-50 pl-9 pr-9 py-2.5 text-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100',
+                className: 'tjb-focusable font-body w-full rounded-xl border border-slate-200 bg-[var(--canvas)] pl-9 pr-9 py-2.5 text-sm outline-none transition focus:border-[var(--navy-600)] focus:bg-white focus:ring-2 focus:ring-[var(--navy-100)]',
             }),
             value ? React.createElement('button', {
                 onClick: () => onChange(''),
-                className: 'absolute inset-y-0 right-3 flex items-center text-slate-400 hover:text-slate-700 transition',
-            },
-                React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 20 20', fill: 'currentColor', className: 'w-4 h-4' },
-                    React.createElement('path', { d: 'M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z' })
-                )
-            ) : null
+                'aria-label': 'Bersihkan pencarian',
+                className: 'tjb-focusable absolute inset-y-0 right-3 flex items-center text-slate-400 hover:text-slate-700 transition',
+            }, Icon.close()) : null
         ),
-        value ? React.createElement('span', { className: 'shrink-0 text-xs text-slate-500 tabular-nums' },
+        value ? React.createElement('span', { className: 'font-data shrink-0 text-xs text-[var(--ink-500)]' },
             `${resultCount} / ${totalCount}`
         ) : null
     );
@@ -522,14 +668,9 @@ const exportToExcel = (items: BusinessItem[], filename: string, sheetLabel: stri
 const ExportButton = ({ items, filename, sheetLabel }: { items: BusinessItem[]; filename: string; sheetLabel: string }) =>
     React.createElement('button', {
         onClick: () => exportToExcel(items, filename, sheetLabel),
-        className: 'shrink-0 flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 active:bg-emerald-200 transition',
+        className: 'tjb-btn tjb-btn-success tjb-focusable shrink-0',
         title: `Export ${sheetLabel} ke Excel`,
-    },
-        React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 20 20', fill: 'currentColor', className: 'w-4 h-4 shrink-0' },
-            React.createElement('path', { fillRule: 'evenodd', d: 'M10 3a.75.75 0 01.75.75v10.638l3.96-4.158a.75.75 0 111.08 1.04l-5.25 5.5a.75.75 0 01-1.08 0l-5.25-5.5a.75.75 0 111.08-1.04l3.96 4.158V3.75A.75.75 0 0110 3z', clipRule: 'evenodd' })
-        ),
-        'Export Excel'
-    );
+    }, Icon.download(), 'Export Excel');
 
 // ─── Detail Modal ─────────────────────────────────────────────────────────────
 
@@ -549,46 +690,51 @@ const DetailModal = ({ item, onClose }: { item: BusinessItem; onClose: () => voi
         { key: 'email', label: 'Email',   icon: '✉️', prefix: 'mailto:' },
     ].filter(({ key }) => (item as any)[key]);
 
-    return React.createElement('div', { className: 'fixed inset-0 z-[99999] flex items-center justify-center' },
-        React.createElement('div', { className: 'absolute inset-0 bg-black/40', onClick: onClose }),
-        React.createElement('div', { className: 'relative z-[100000] w-full max-w-lg mx-4 bg-white rounded-[28px] shadow-2xl overflow-y-auto max-h-[90vh]' },
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [onClose]);
+
+    return React.createElement('div', { className: 'fixed inset-0 z-[99999] flex items-center justify-center font-body', role: 'dialog', 'aria-modal': 'true' },
+        React.createElement('div', { className: 'absolute inset-0 bg-slate-950/50 backdrop-blur-sm', onClick: onClose }),
+        React.createElement('div', { className: 'tjb-fade-in tjb-scroll relative z-[100000] w-full max-w-lg mx-4 bg-white rounded-[28px] shadow-2xl overflow-y-auto max-h-[90vh]' },
             React.createElement('div', { className: 'p-6 border-b border-slate-200 flex items-start justify-between gap-4' },
                 React.createElement('div', null,
-                    React.createElement('h3', { className: 'text-base font-semibold text-slate-950' }, item.name),
-                    React.createElement('div', { className: 'flex items-center gap-2 mt-1 flex-wrap' },
+                    React.createElement('h3', { className: 'font-display text-base font-bold text-slate-950' }, item.name),
+                    React.createElement('div', { className: 'flex items-center gap-2 mt-1.5 flex-wrap' },
                         item.category ? React.createElement('span', {
                             className: `inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${categoryBadgeClass(item.category)}`,
                         }, `${CATEGORY_ICONS[item.category] || '📦'} ${item.category}`) : null,
-                        React.createElement('p', { className: 'text-sm text-slate-500' }, item.address || 'Alamat tidak tersedia')
+                        React.createElement('p', { className: 'text-sm text-[var(--ink-500)]' }, item.address || 'Alamat tidak tersedia')
                     ),
                     item.rating ? React.createElement('div', { className: 'flex items-center gap-1.5 mt-1.5' },
                         React.createElement('span', { className: 'text-amber-400 text-sm' }, '★'),
                         React.createElement('span', { className: 'text-sm font-semibold text-slate-700' }, item.rating.toFixed(1)),
-                        item.total_reviews ? React.createElement('span', { className: 'text-xs text-slate-400' }, `(${item.total_reviews.toLocaleString('id-ID')} ulasan)`) : null
+                        item.total_reviews ? React.createElement('span', { className: 'font-data text-xs text-slate-400' }, `(${item.total_reviews.toLocaleString('id-ID')} ulasan)`) : null
                     ) : null
                 ),
-                React.createElement('button', { onClick: onClose, className: 'shrink-0 rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition' },
-                    React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 20 20', fill: 'currentColor', className: 'w-5 h-5' },
-                        React.createElement('path', { d: 'M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z' })
-                    )
-                )
+                React.createElement('button', { onClick: onClose, 'aria-label': 'Tutup', className: 'tjb-focusable shrink-0 rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition' }, Icon.close('w-5 h-5'))
             ),
             React.createElement('div', { className: 'p-6 space-y-5' },
-                React.createElement('div', { className: 'flex items-center gap-3 flex-wrap' },
-                    React.createElement('div', { className: 'rounded-2xl bg-slate-100 px-5 py-3 text-center' },
-                        React.createElement('p', { className: 'text-xs font-semibold uppercase tracking-widest text-slate-500' }, 'Skor Digital'),
-                        React.createElement('p', { className: 'text-2xl font-bold text-sky-700 tabular-nums mt-1' }, item.digital_score)
+                React.createElement('div', { className: 'flex items-center gap-4 flex-wrap' },
+                    React.createElement('div', { className: 'rounded-2xl bg-[var(--navy-50)] px-5 py-3 text-center' },
+                        React.createElement('p', { className: 'text-[11px] font-semibold uppercase tracking-widest text-[var(--navy-700)]' }, 'Skor Digital'),
+                        React.createElement('p', { className: 'font-data text-2xl font-bold text-[var(--navy-800)] mt-1' }, item.digital_score)
                     ),
-                    React.createElement('span', { className: `inline-block rounded-full px-3 py-1 text-sm font-semibold ${levelBadgeClass(item.digital_level)}` }, item.digital_level)
+                    React.createElement('div', { className: 'flex flex-col gap-1.5' },
+                        React.createElement('span', { className: `inline-block w-fit rounded-full px-3 py-1 text-sm font-semibold ${levelBadgeClass(item.digital_level)}` }, item.digital_level),
+                        React.createElement(SignalBars, { level: item.digital_level, size: 'md' })
+                    )
                 ),
                 item.latitude && item.longitude ? React.createElement('a', {
                     href: item.google_maps_url || `https://www.google.com/maps/search/?api=1&query=${item.latitude},${item.longitude}`,
                     target: '_blank', rel: 'noreferrer',
-                    className: 'flex items-center gap-2 rounded-xl bg-slate-50 border border-slate-200 px-4 py-3 text-sm text-slate-600 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700 transition',
+                    className: 'tjb-focusable flex items-center gap-2 rounded-xl bg-[var(--canvas)] border border-slate-200 px-4 py-3 text-sm text-slate-600 hover:border-[var(--navy-300)] hover:bg-[var(--navy-50)] hover:text-[var(--navy-800)] transition',
                 },
-                    React.createElement('span', null, '📍'),
+                    React.createElement('span', { className: 'text-[var(--navy-700)]' }, Icon.pin()),
                     React.createElement('span', { className: 'font-medium text-slate-700' }, 'Lihat di Google Maps'),
-                    React.createElement('span', { className: 'ml-auto text-xs text-slate-400' }, '→')
+                    React.createElement('span', { className: 'ml-auto text-slate-400' }, Icon.arrow())
                 ) : null,
                 React.createElement('div', { className: 'space-y-2' },
                     React.createElement('p', { className: 'text-xs font-semibold uppercase tracking-widest text-slate-400' }, 'Platform Online'),
@@ -599,7 +745,7 @@ const DetailModal = ({ item, onClose }: { item: BusinessItem; onClose: () => voi
                                     key,
                                     href: (item as any)[key].startsWith('http') ? (item as any)[key] : `https://${(item as any)[key]}`,
                                     target: '_blank', rel: 'noreferrer',
-                                    className: 'flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700 transition',
+                                    className: 'tjb-focusable flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 hover:border-[var(--navy-300)] hover:bg-[var(--navy-50)] hover:text-[var(--navy-800)] transition',
                                 },
                                     React.createElement('span', null, icon),
                                     React.createElement('span', { className: 'font-medium shrink-0' }, label),
@@ -607,7 +753,7 @@ const DetailModal = ({ item, onClose }: { item: BusinessItem; onClose: () => voi
                                 )
                             )
                           )
-                        : React.createElement('p', { className: 'text-sm text-slate-400' }, 'Tidak ada platform online terdeteksi.')
+                        : React.createElement('div', { className: 'rounded-xl border-2 border-dashed border-slate-200 px-4 py-4 text-sm text-slate-400' }, 'Belum ada platform online yang terdeteksi untuk usaha ini.')
                 ),
                 contacts.length > 0 ? React.createElement('div', { className: 'space-y-2' },
                     React.createElement('p', { className: 'text-xs font-semibold uppercase tracking-widest text-slate-400' }, 'Kontak'),
@@ -616,7 +762,7 @@ const DetailModal = ({ item, onClose }: { item: BusinessItem; onClose: () => voi
                             React.createElement('a', {
                                 key,
                                 href: `${prefix}${(item as any)[key]}`,
-                                className: 'flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700 transition',
+                                className: 'tjb-focusable flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 hover:border-[var(--navy-300)] hover:bg-[var(--navy-50)] hover:text-[var(--navy-800)] transition',
                             },
                                 React.createElement('span', null, icon),
                                 React.createElement('span', { className: 'font-medium shrink-0' }, label),
@@ -637,28 +783,28 @@ const Navbar = ({ activePage, onNavigate }: { activePage: Page; onNavigate: (p: 
         { id: 'dashboard', label: 'Dashboard' },
         { id: 'daftar',    label: 'Daftar Usaha' },
     ];
-    return React.createElement('nav', { className: 'sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm' },
+    return React.createElement('nav', { className: 'font-body sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-slate-200' },
         React.createElement('div', { className: 'mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8 flex flex-col gap-4 py-3 lg:flex-row lg:items-center lg:justify-between' },
             React.createElement('div', { className: 'flex items-center gap-4' },
                 React.createElement('img', {
                     src: '/logo_bps.png',
                     alt: 'Logo BPS',
-                    className: 'h-12 w-12 rounded-2xl border border-slate-200 bg-white object-contain p-1 shadow-sm',
+                    className: 'h-11 w-11 rounded-xl border border-slate-200 bg-white object-contain p-1',
                 }),
-                React.createElement('div', { className: 'flex flex-col' },
-                    React.createElement('span', { className: ' font-semibold text-slate-900' }, 'Badan Pusat Statistik'),
-                    React.createElement('span', { className: ' text-slate-700' }, 'Kabupaten Tanjung Jabung Barat')
+                React.createElement('div', { className: 'flex flex-col leading-tight' },
+                    React.createElement('span', { className: 'font-display font-bold text-[var(--ink-900)] text-[15px]' }, 'Badan Pusat Statistik'),
+                    React.createElement('span', { className: 'text-[13px] text-[var(--ink-500)]' }, 'Kabupaten Tanjung Jabung Barat')
                 )
             ),
-            React.createElement('div', { className: 'flex flex-wrap items-center justify-end gap-3' },
+            React.createElement('div', { className: 'flex flex-wrap items-center justify-end gap-2' },
                 navItems.map(({ id, label }) =>
                     React.createElement('button', {
                         key: id,
                         onClick: () => onNavigate(id),
-                        className: ['rounded-full px-5 py-2.5 text-sm font-semibold transition shadow-sm',
+                        className: ['tjb-focusable rounded-full px-5 py-2.5 text-sm font-semibold transition',
                             activePage === id
-                                ? 'bg-orange-400 text-white shadow-orange-200'
-                                : 'bg-orange-100 text-orange-800 hover:bg-orange-200'].join(' '),
+                                ? 'bg-[var(--navy-800)] text-white shadow-sm'
+                                : 'bg-[var(--navy-50)] text-[var(--navy-800)] hover:bg-[var(--navy-100)]'].join(' '),
                     }, label)
                 )
             )
@@ -666,13 +812,24 @@ const Navbar = ({ activePage, onNavigate }: { activePage: Page; onNavigate: (p: 
     );
 };
 
+// ─── Empty state ──────────────────────────────────────────────────────────────
+
+const EmptyState = ({ title, description }: { title: string; description: string }) =>
+    React.createElement('div', { className: 'flex flex-col items-center justify-center gap-3 py-14 text-center' },
+        React.createElement('div', { className: 'flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--navy-50)] text-[var(--navy-300)]' },
+            React.createElement('span', { className: 'text-[var(--navy-600)]' }, Icon.inbox())
+        ),
+        React.createElement('p', { className: 'font-display font-semibold text-slate-700 text-sm' }, title),
+        React.createElement('p', { className: 'text-xs text-slate-400 max-w-xs' }, description)
+    );
+
 // ─── Dashboard Page ───────────────────────────────────────────────────────────
 
 const DashboardPage = () => {
     const [searchTerm, setSearchTerm]           = useState('');
     const [radius, setRadius]                   = useState('1000');
     const [statusText, setStatusText]           = useState('Masukkan lokasi untuk memulai pencarian.');
-    const [nearbySummary, setNearbySummary]     = useState('Tekan Cari Usaha Sekitar setelah memilih lokasi.');
+    const [nearbySummary, setNearbySummary]     = useState('Tekan "Cari Usaha Sekitar" setelah memilih lokasi.');
     const [currentPosition, setCurrentPosition] = useState<{ lat: number; lon: number } | null>(null);
     const [nearbyItems, setNearbyItems]         = useState<BusinessItem[]>([]);
     const [savedBusinesses, setSavedBusinesses] = useState<BusinessItem[]>([]);
@@ -763,7 +920,7 @@ const DashboardPage = () => {
             setStatusText(`Lokasi dipilih: ${display_name}`);
             if (mapInstance.current) {
                 mapInstance.current.flyTo([lat, lon], 14, { duration: 0.9 });
-                L.circle([lat, lon], { radius: parseInt(radius, 10), color: '#0ea5e9', fillOpacity: 0.08 })
+                L.circle([lat, lon], { radius: parseInt(radius, 10), color: '#14508C', fillOpacity: 0.08 })
                     .addTo(savedLayer.current!);
             }
         } catch (e: any) { setStatusText(e.message); }
@@ -826,70 +983,66 @@ const DashboardPage = () => {
                 pctHigh, pctMed, pctLow,
                 categoryData,
             }),
-            className: 'shrink-0 flex items-center gap-1.5 rounded-xl border border-sky-300 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-700 hover:bg-sky-100 active:bg-sky-200 transition',
+            className: 'tjb-btn tjb-btn-info tjb-focusable shrink-0',
             title: 'Unduh laporan distribusi + kategori sebagai PNG',
-        },
-            React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 20 20', fill: 'currentColor', className: 'w-4 h-4 shrink-0' },
-                React.createElement('path', { fillRule: 'evenodd', d: 'M10 3a.75.75 0 01.75.75v10.638l3.96-4.158a.75.75 0 111.08 1.04l-5.25 5.5a.75.75 0 01-1.08 0l-5.25-5.5a.75.75 0 111.08-1.04l3.96 4.158V3.75A.75.75 0 0110 3z', clipRule: 'evenodd' })
-            ),
-            'Unduh Laporan (.png)'
-        );
+        }, Icon.download(), 'Unduh Laporan (.png)');
 
-    return React.createElement('div', { className: 'mx-auto max-w-[1320px] px-4 py-8 sm:px-6 lg:px-8 space-y-6' },
+    return React.createElement('div', { className: 'font-body mx-auto max-w-[1320px] px-4 py-8 sm:px-6 lg:px-8 space-y-6' },
 
-        // ── Hero / Banner ──
-        React.createElement('section', { className: 'rounded-b-3xl overflow-hidden' },
-            React.createElement('div', { className: 'px-4' },
-                React.createElement('div', { className: 'mx-auto max-w-[1320px] flex items-center justify-between gap-4' },
-                    React.createElement('div', { className: 'flex-1' },
-                        React.createElement('h1', { className: 'text-xl md:text-2xl lg:text-2xl font-semibold text-slate-900' }, 'Sistem Pemetaan Usaha Digital'),
-                    ),
-                    React.createElement('div', { className: 'text-right hidden sm:block' },
-                    )
-                )
+        // ── Hero banner ──
+        React.createElement('section', { className: 'relative overflow-hidden rounded-[28px] bg-[var(--navy-900)] px-6 py-8 sm:px-10 sm:py-10' },
+            React.createElement('div', { className: 'pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full bg-[var(--navy-700)] opacity-40 blur-3xl' }),
+            React.createElement('div', { className: 'pointer-events-none absolute -left-10 bottom-[-4rem] h-48 w-48 rounded-full bg-[var(--navy-600)] opacity-30 blur-3xl' }),
+            React.createElement('div', { className: 'relative flex flex-col gap-3' },
+                React.createElement('span', { className: 'w-fit rounded-full bg-white/10 text-[14px] font-semibold uppercase tracking-widest text-sky-200' }, 'Sistem Pemetaan Usaha Digital'),
+                React.createElement('h1', { className: 'font-display text-xl md:text-3xl font-extrabold text-white max-w' }, 'Ukur tingkat digitalisasi usaha di setiap wilayah'),
+                React.createElement('p', { className: 'text-slate-300 max-w' }, 'Cari sebuah wilayah, lihat sebaran usaha di sekitarnya, dan pantau seberapa kuat kehadiran digital mereka — dari website hingga media sosial.')
             )
         ),
 
         // ── Search bar ──
-        React.createElement('div', { className: 'rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-200 space-y-4' },
-            React.createElement('h2', { className: 'text-base font-semibold text-slate-950' }, 'Cari Wilayah'),
+        React.createElement('div', { className: 'tjb-card p-6 space-y-4' },
+            React.createElement('div', { className: 'flex items-center gap-2' },
+                React.createElement('span', { className: 'text-[var(--navy-700)]' }, Icon.radar()),
+                React.createElement('h2', { className: 'font-display text-base font-bold text-slate-950' }, 'Cari Wilayah')
+            ),
             React.createElement('div', { className: 'flex flex-col sm:flex-row gap-3' },
                 React.createElement('input', {
                     type: 'text', value: searchTerm,
                     onChange: (e: any) => setSearchTerm(e.target.value),
                     onKeyDown: (e: any) => e.key === 'Enter' && searchLocation(),
                     placeholder: 'Contoh: Kota Jambi, Prabumulih, Pasar…',
-                    className: 'flex-1 rounded-xl border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100',
+                    className: 'tjb-focusable flex-1 rounded-xl border border-slate-200 bg-[var(--canvas)] px-4 py-2.5 text-sm outline-none focus:border-[var(--navy-600)] focus:bg-white focus:ring-2 focus:ring-[var(--navy-100)]',
                 }),
                 React.createElement('select', {
                     value: radius, onChange: (e: any) => setRadius(e.target.value),
-                    className: 'rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm outline-none focus:border-sky-500',
+                    className: 'tjb-focusable rounded-xl border border-slate-200 bg-[var(--canvas)] px-3 py-2.5 text-sm outline-none focus:border-[var(--navy-600)]',
                 },
                     ['500', '1000', '1500', '2500', '5000'].map((r) =>
                         React.createElement('option', { key: r, value: r }, `${r} m`)
                     )
                 ),
                 React.createElement('div', { className: 'flex gap-2' },
-                    React.createElement('button', { onClick: searchLocation, className: 'flex-1 sm:flex-none rounded-xl bg-orange-100 px-5 py-2.5 text-sm font-semibold text-orange-800 transition hover:bg-orange-200' }, 'Cari Lokasi'),
-                    React.createElement('button', { onClick: searchNearby, className: 'flex-1 sm:flex-none rounded-xl border border-orange-100 bg-white px-5 py-2.5 text-sm font-semibold text-slate-800 transition hover:bg-orange-50' }, 'Cari Usaha Sekitar')
+                    React.createElement('button', { onClick: searchLocation, className: 'tjb-btn tjb-btn-primary tjb-focusable flex-1 sm:flex-none' }, Icon.pin(), 'Cari Lokasi'),
+                    React.createElement('button', { onClick: searchNearby, className: 'tjb-btn tjb-btn-outline tjb-focusable flex-1 sm:flex-none' }, Icon.radar(), 'Cari Usaha Sekitar')
                 )
             ),
-            React.createElement('p', { className: 'rounded-xl bg-slate-100 px-4 py-2.5 text-sm text-slate-600' }, statusText)
+            React.createElement('p', { className: 'rounded-xl bg-[var(--canvas)] px-4 py-2.5 text-sm text-slate-600' }, statusText)
         ),
 
         // ── Map + Nearby table ──
         React.createElement('div', { className: 'grid gap-6 xl:grid-cols-[1.6fr_1fr]' },
-            React.createElement('div', { className: 'rounded-[28px] bg-white p-4 shadow-sm ring-1 ring-slate-200' },
+            React.createElement('div', { className: 'tjb-card p-4' },
                 React.createElement('div', { id: 'map', ref: mapRef, className: 'h-[500px] w-full rounded-[20px] border border-slate-200 relative z-0' })
             ),
-            React.createElement('div', { className: 'rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-200 flex flex-col gap-4' },
+            React.createElement('div', { className: 'tjb-card p-6 flex flex-col gap-4' },
                 React.createElement('div', { className: 'flex items-center justify-between gap-3' },
-                    React.createElement('h2', { className: 'text-base font-semibold text-slate-950' }, 'Usaha di Sekitar Wilayah'),
+                    React.createElement('h2', { className: 'font-display text-base font-bold text-slate-950' }, 'Usaha di Sekitar Wilayah'),
                     nearbyItems.length > 0
                         ? React.createElement(ExportButton, { items: nearbyItems, filename: exportFilename, sheetLabel: 'Usaha Sekitar' })
                         : null
                 ),
-                React.createElement('p', { className: 'rounded-xl bg-slate-100 px-4 py-2.5 text-sm text-slate-600' }, nearbySummary),
+                React.createElement('p', { className: 'rounded-xl bg-[var(--canvas)] px-4 py-2.5 text-sm text-slate-600' }, nearbySummary),
                 nearbyItems.length > 0
                     ? React.createElement(TableSearchInput, {
                         value: nearbySearch, onChange: setNearbySearch,
@@ -897,34 +1050,34 @@ const DashboardPage = () => {
                         resultCount: filteredNearbyItems.length, totalCount: nearbyItems.length,
                       })
                     : null,
-                React.createElement('div', { className: 'overflow-auto rounded-2xl border border-slate-200 max-h-[380px]' },
+                React.createElement('div', { className: 'tjb-scroll overflow-auto rounded-2xl border border-slate-200 max-h-[380px]' },
                     React.createElement('table', { className: 'w-full border-collapse text-sm' },
-                        React.createElement('thead', { className: 'bg-slate-50 text-slate-500 sticky top-0' },
+                        React.createElement('thead', { className: 'bg-[var(--canvas)] text-[var(--ink-500)] sticky top-0 z-10' },
                             React.createElement('tr', null,
-                                React.createElement('th', { className: 'px-4 py-3 text-left font-semibold' }, 'Nama Usaha'),
-                                React.createElement('th', { className: 'px-4 py-3 text-left font-semibold hidden sm:table-cell' }, 'Kategori'),
-                                React.createElement('th', { className: 'px-4 py-3 text-center font-semibold w-16' }, 'Skor'),
-                                React.createElement('th', { className: 'px-4 py-3 text-left font-semibold hidden md:table-cell' }, 'Level'),
+                                React.createElement('th', { className: 'px-4 py-3 text-left font-semibold text-xs uppercase tracking-wide' }, 'Nama Usaha'),
+                                React.createElement('th', { className: 'px-4 py-3 text-left font-semibold text-xs uppercase tracking-wide hidden sm:table-cell' }, 'Kategori'),
+                                React.createElement('th', { className: 'px-4 py-3 text-center font-semibold text-xs uppercase tracking-wide w-16' }, 'Skor'),
+                                React.createElement('th', { className: 'px-4 py-3 text-left font-semibold text-xs uppercase tracking-wide hidden md:table-cell' }, 'Sinyal Digital'),
                                 React.createElement('th', { className: 'px-4 py-3 w-16' })
                             )
                         ),
                         React.createElement('tbody', null,
                             filteredNearbyItems.length === 0
                                 ? React.createElement('tr', null,
-                                    React.createElement('td', { colSpan: 5, className: 'px-4 py-10 text-center text-slate-400' },
-                                        nearbyItems.length === 0
-                                            ? 'Pilih wilayah dan tekan "Cari Usaha Sekitar".'
-                                            : `Tidak ada usaha yang cocok dengan "${nearbySearch}".`
+                                    React.createElement('td', { colSpan: 5, className: 'px-4' },
+                                        React.createElement(EmptyState, nearbyItems.length === 0
+                                            ? { title: 'Belum ada pencarian', description: 'Pilih wilayah lalu tekan "Cari Usaha Sekitar" untuk melihat daftar usaha di sini.' }
+                                            : { title: 'Tidak ditemukan', description: `Tidak ada usaha yang cocok dengan "${nearbySearch}".` })
                                     ))
                                 : filteredNearbyItems.map((item, idx) =>
                                     React.createElement('tr', {
                                         key: `${item.id}-${idx}`,
-                                        className: 'border-t border-slate-100 hover:bg-slate-50 transition',
+                                        className: 'border-t border-slate-100 hover:bg-[var(--navy-50)]/60 transition',
                                     },
                                         React.createElement('td', { className: 'px-4 py-3 font-medium text-slate-900' },
                                             React.createElement('div', null,
                                                 item.name,
-                                                item.rating ? React.createElement('span', { className: 'ml-1.5 text-xs text-amber-500' }, `★ ${item.rating.toFixed(1)}`) : null
+                                                item.rating ? React.createElement('span', { className: 'font-data ml-1.5 text-xs text-amber-500' }, `★ ${item.rating.toFixed(1)}`) : null
                                             )
                                         ),
                                         React.createElement('td', { className: 'px-4 py-3 hidden sm:table-cell' },
@@ -936,14 +1089,17 @@ const DashboardPage = () => {
                                                 item.category || 'Usaha Lainnya'
                                             )
                                         ),
-                                        React.createElement('td', { className: 'px-4 py-3 text-center tabular-nums font-semibold text-sky-700' }, item.digital_score),
+                                        React.createElement('td', { className: 'font-data px-4 py-3 text-center font-semibold text-[var(--navy-800)]' }, item.digital_score),
                                         React.createElement('td', { className: 'px-4 py-3 hidden md:table-cell' },
-                                            React.createElement('span', { className: `inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${levelBadgeClass(item.digital_level)}` }, item.digital_level)
+                                            React.createElement('div', { className: 'flex items-center gap-2' },
+                                                React.createElement(SignalBars, { level: item.digital_level, size: 'sm' }),
+                                                React.createElement('span', { className: `inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${levelBadgeClass(item.digital_level)}` }, item.digital_level)
+                                            )
                                         ),
                                         React.createElement('td', { className: 'px-4 py-3' },
                                             React.createElement('button', {
                                                 onClick: () => setSelectedItem(item),
-                                                className: 'rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-sky-50 hover:text-sky-700 transition',
+                                                className: 'tjb-focusable rounded-lg bg-[var(--canvas)] px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-[var(--navy-50)] hover:text-[var(--navy-800)] transition',
                                             }, 'Detail')
                                         )
                                     )
@@ -954,13 +1110,12 @@ const DashboardPage = () => {
             )
         ),
 
-        // ── Distribusi Level Digital + Bar Chart Kategori dalam satu card ──
-        React.createElement('div', { className: 'rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-200 space-y-6' },
+        // ── Distribusi Level Digital + Bar Chart Kategori ──
+        React.createElement('div', { className: 'tjb-card p-6 space-y-6' },
 
-            // Header card gabungan + satu tombol unduh
             React.createElement('div', { className: 'flex items-start justify-between gap-4 flex-wrap' },
                 React.createElement('div', null,
-                    React.createElement('h2', { className: 'text-base font-semibold text-slate-950' },
+                    React.createElement('h2', { className: 'font-display text-base font-bold text-slate-950' },
                         locationLabel ? `Analisis Digitalisasi — ${locationLabel}` : 'Analisis Digitalisasi Wilayah'
                     ),
                     React.createElement('p', { className: 'text-xs text-slate-400 mt-0.5' },
@@ -969,7 +1124,6 @@ const DashboardPage = () => {
                             : 'Cari wilayah terlebih dahulu untuk melihat analisis'
                     )
                 ),
-                // Satu tombol unduh untuk keduanya
                 hasSearched && total > 0 ? React.createElement(DownloadReportButton, null) : null
             ),
 
@@ -977,9 +1131,9 @@ const DashboardPage = () => {
             React.createElement('div', { className: 'space-y-3' },
                 React.createElement('p', { className: 'text-sm font-semibold text-slate-700' }, 'Distribusi Level Digital'),
                 React.createElement('div', { className: 'grid gap-4 sm:grid-cols-3' },
-                    React.createElement(StatCard, { label: 'Tinggi / Sangat Tinggi', value: nearbyLevelCounts.high }),
-                    React.createElement(StatCard, { label: 'Sedang',                  value: nearbyLevelCounts.medium }),
-                    React.createElement(StatCard, { label: 'Rendah',                  value: nearbyLevelCounts.low })
+                    React.createElement(StatCard, { label: 'Tinggi / Sangat Tinggi', value: nearbyLevelCounts.high,   tone: 'emerald', icon: React.createElement(SignalBars, { level: 'Sangat Tinggi', size: 'sm' }) }),
+                    React.createElement(StatCard, { label: 'Sedang',                  value: nearbyLevelCounts.medium, tone: 'amber',   icon: React.createElement(SignalBars, { level: 'Sedang', size: 'sm' }) }),
+                    React.createElement(StatCard, { label: 'Rendah',                  value: nearbyLevelCounts.low,    tone: 'rose',    icon: React.createElement(SignalBars, { level: 'Rendah', size: 'sm' }) })
                 ),
                 hasSearched && total > 0
                     ? React.createElement('div', { className: 'space-y-2' },
@@ -988,28 +1142,23 @@ const DashboardPage = () => {
                             React.createElement('div', { style: { width: `${pctMed}%` },  className: 'bg-amber-400 transition-all' }),
                             React.createElement('div', { style: { width: `${pctLow}%` },  className: 'bg-rose-400 transition-all' })
                         ),
-                        React.createElement('div', { className: 'flex gap-4 text-xs text-slate-500' },
+                        React.createElement('div', { className: 'font-data flex gap-4 text-xs text-slate-500' },
                             React.createElement('span', null, React.createElement('span', { className: 'text-emerald-600 font-semibold' }, `${pctHigh}%`), ' Tinggi'),
                             React.createElement('span', null, React.createElement('span', { className: 'text-amber-600 font-semibold' }, `${pctMed}%`),  ' Sedang'),
                             React.createElement('span', null, React.createElement('span', { className: 'text-rose-600 font-semibold' },   `${pctLow}%`),  ' Rendah')
                         )
                     )
-                    : React.createElement('div', { className: 'rounded-xl border-2 border-dashed border-slate-200 py-8 text-center text-sm text-slate-400' },
-                        'Grafik distribusi akan muncul setelah pencarian wilayah berhasil.')
+                    : React.createElement(EmptyState, { title: 'Belum ada data', description: 'Grafik distribusi akan muncul setelah pencarian wilayah berhasil.' })
             ),
 
-            // Divider
-            hasSearched && total > 0
-                ? React.createElement('hr', { className: 'border-slate-100' })
-                : null,
+            hasSearched && total > 0 ? React.createElement('hr', { className: 'border-slate-100' }) : null,
 
             // ── Sub-section: Bar Chart Kategori ──
             React.createElement('div', { className: 'space-y-3' },
                 React.createElement('p', { className: 'text-sm font-semibold text-slate-700' }, 'Perbandingan Usaha per Kategori'),
                 !hasSearched || total === 0
-                    ? React.createElement('div', { className: 'rounded-xl border-2 border-dashed border-slate-200 py-10 text-center text-sm text-slate-400' },
-                        'Bar chart akan muncul setelah pencarian wilayah berhasil.')
-                    : React.createElement('div', { className: 'overflow-x-auto' },
+                    ? React.createElement(EmptyState, { title: 'Belum ada data', description: 'Bar chart kategori akan muncul setelah pencarian wilayah berhasil.' })
+                    : React.createElement('div', { className: 'tjb-scroll overflow-x-auto' },
                         React.createElement('div', { style: { minWidth: '420px' } },
                             ...categoryData.slice(0, 15).map(([cat, count]) => {
                                 const maxC  = categoryData[0]?.[1] ?? 1;
@@ -1019,19 +1168,16 @@ const DashboardPage = () => {
                                 const icon   = CATEGORY_ICONS[cat] || '📦';
 
                                 return React.createElement('div', { key: cat, className: 'flex items-center gap-3 mb-2.5' },
-                                    // Label
                                     React.createElement('div', { className: 'shrink-0 w-44 text-right' },
                                         React.createElement('span', { className: 'text-xs text-slate-600 truncate block' }, `${icon} ${cat}`)
                                     ),
-                                    // Track + bar
                                     React.createElement('div', { className: 'flex-1 relative h-6 rounded-full bg-slate-100 overflow-hidden' },
                                         React.createElement('div', {
                                             className: 'absolute inset-y-0 left-0 rounded-full transition-all duration-500',
                                             style: { width: `${barPct}%`, backgroundColor: color },
                                         })
                                     ),
-                                    // Count + pct
-                                    React.createElement('div', { className: 'shrink-0 w-16 text-left' },
+                                    React.createElement('div', { className: 'font-data shrink-0 w-16 text-left' },
                                         React.createElement('span', { className: 'text-xs font-semibold text-slate-800' }, count),
                                         React.createElement('span', { className: 'text-xs text-slate-400 ml-1' }, `${pct}%`)
                                     )
@@ -1045,7 +1191,7 @@ const DashboardPage = () => {
         selectedItem ? React.createElement(DetailModal, { item: selectedItem, onClose: () => setSelectedItem(null) }) : null,
 
         (isGeocodingLoading || isNearbyLoading) ? React.createElement('div', {
-            className: 'fixed inset-0 z-[9999] flex items-center justify-center'
+            className: 'font-body fixed inset-0 z-[9999] flex items-center justify-center'
         },
             React.createElement('div', { className: 'absolute inset-0 bg-slate-950/60 backdrop-blur-sm' }),
             React.createElement('div', {
@@ -1053,15 +1199,15 @@ const DashboardPage = () => {
             },
                 React.createElement('div', { className: 'relative w-16 h-16' },
                     React.createElement('div', { className: 'absolute inset-0 rounded-full border-4 border-slate-100' }),
-                    React.createElement('div', { className: 'absolute inset-0 rounded-full border-4 border-transparent border-t-sky-500 border-r-sky-300 animate-spin' }),
+                    React.createElement('div', { className: 'absolute inset-0 rounded-full border-4 border-transparent border-t-[var(--navy-600)] border-r-[var(--navy-300)] animate-spin' }),
                     React.createElement('div', {
-                        className: 'absolute inset-2 rounded-full border-4 border-transparent border-b-indigo-500 border-l-indigo-300',
+                        className: 'absolute inset-2 rounded-full border-4 border-transparent border-b-sky-500 border-l-sky-300',
                         style: { animation: 'spin 1.2s linear infinite reverse' }
                     }),
-                    React.createElement('div', { className: 'absolute inset-[22px] rounded-full bg-sky-500 animate-pulse' })
+                    React.createElement('div', { className: 'absolute inset-[22px] rounded-full bg-[var(--navy-700)] animate-pulse' })
                 ),
                 React.createElement('div', { className: 'text-center space-y-1' },
-                    React.createElement('p', { className: 'text-sm font-semibold text-slate-900' },
+                    React.createElement('p', { className: 'font-display text-sm font-semibold text-slate-900' },
                         isGeocodingLoading ? 'Mencari Lokasi' : 'Memuat Data Usaha'
                     ),
                     React.createElement('p', { className: 'text-xs text-slate-500' },
@@ -1072,7 +1218,7 @@ const DashboardPage = () => {
                     ...[0, 1, 2].map((i) =>
                         React.createElement('div', {
                             key: i,
-                            className: 'w-1.5 h-1.5 rounded-full bg-sky-400',
+                            className: 'w-1.5 h-1.5 rounded-full bg-[var(--navy-500)]',
                             style: { animation: 'pulse 1.2s ease-in-out infinite', animationDelay: `${i * 0.2}s` }
                         })
                     )
@@ -1153,21 +1299,21 @@ const DaftarUsahaPage = () => {
         [businesses, daftarSearch]
     );
 
-    return React.createElement('div', { className: 'mx-auto max-w-[1320px] px-4 py-8 sm:px-6 lg:px-8 space-y-6' },
+    return React.createElement('div', { className: 'font-body mx-auto max-w-[1320px] px-4 py-8 sm:px-6 lg:px-8 space-y-6' },
 
-        React.createElement('div', { className: 'rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-200 space-y-4' },
-            React.createElement('h2', { className: 'text-base font-semibold text-slate-950' }, 'Ringkasan Data Usaha Tersimpan'),
+        React.createElement('div', { className: 'tjb-card p-6 space-y-4' },
+            React.createElement('h2', { className: 'font-display text-base font-bold text-slate-950' }, 'Ringkasan Data Usaha Tersimpan'),
             React.createElement('div', { className: 'grid gap-4 sm:grid-cols-3' },
-                React.createElement(StatCard, { label: 'Total usaha tersimpan',        value: stats.total,           dark: true }),
-                React.createElement(StatCard, { label: 'Usaha dengan online presence', value: stats.online_presence, dark: true }),
-                React.createElement(StatCard, { label: 'Rata-rata skor digital',       value: stats.average_score,   dark: true })
+                React.createElement(StatCard, { label: 'Total usaha tersimpan',        value: stats.total,           tone: 'navy' }),
+                React.createElement(StatCard, { label: 'Usaha dengan online presence', value: stats.online_presence, tone: 'navy' }),
+                React.createElement(StatCard, { label: 'Rata-rata skor digital',       value: stats.average_score,   tone: 'navy' })
             )
         ),
 
-        React.createElement('div', { className: 'rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-200 space-y-4' },
+        React.createElement('div', { className: 'tjb-card p-6 space-y-4' },
             React.createElement('div', { className: 'flex items-center justify-between gap-4 flex-wrap' },
                 React.createElement('div', null,
-                    React.createElement('h2', { className: 'text-base font-semibold text-slate-950' }, 'Daftar Usaha yang Ditambahkan'),
+                    React.createElement('h2', { className: 'font-display text-base font-bold text-slate-950' }, 'Daftar Usaha yang Ditambahkan'),
                     React.createElement('p', { className: 'text-sm text-slate-500 mt-0.5' }, 'Usaha yang telah Anda simpan ke database.')
                 ),
                 React.createElement('div', { className: 'flex items-center gap-2' },
@@ -1179,8 +1325,8 @@ const DaftarUsahaPage = () => {
                             setEditingBusiness(null);
                             setShowModal(true);
                         },
-                        className: 'shrink-0 rounded-xl bg-orange-100 px-4 py-2.5 text-sm font-semibold text-orange-800 transition hover:bg-orange-200',
-                    }, '+ Tambah Usaha')
+                        className: 'tjb-btn tjb-btn-primary tjb-focusable shrink-0',
+                    }, Icon.plus(), 'Tambah Usaha')
                 )
             ),
 
@@ -1193,29 +1339,29 @@ const DaftarUsahaPage = () => {
                 : null,
 
             loading
-                ? React.createElement('div', { className: 'py-16 text-center text-sm text-slate-400' }, 'Memuat data…')
-                : React.createElement('div', { className: 'overflow-auto rounded-2xl border border-slate-200 max-h-[520px]' },
+                ? React.createElement('div', { className: 'py-16 text-center text-sm text-slate-400 flex flex-col items-center gap-3' },
+                    React.createElement('div', { className: 'h-8 w-8 rounded-full border-2 border-slate-200 border-t-[var(--navy-600)] animate-spin' }),
+                    'Memuat data…'
+                  )
+                : React.createElement('div', { className: 'tjb-scroll overflow-auto rounded-2xl border border-slate-200 max-h-[520px]' },
                     React.createElement('table', { className: 'w-full border-collapse text-sm' },
-                        React.createElement('thead', { className: 'bg-slate-50 text-slate-500 sticky top-0' },
+                        React.createElement('thead', { className: 'bg-[var(--canvas)] text-[var(--ink-500)] sticky top-0 z-10' },
                             React.createElement('tr', null,
-                                React.createElement('th', { className: 'px-4 py-3 text-left font-semibold' }, 'Nama Usaha'),
-                                React.createElement('th', { className: 'px-4 py-3 text-left font-semibold hidden md:table-cell' }, 'Alamat'),
-                                React.createElement('th', { className: 'px-4 py-3 text-left font-semibold hidden sm:table-cell' }, 'Platform Online'),
-                                React.createElement('th', { className: 'px-4 py-3 text-center font-semibold w-16' }, 'Skor'),
-                                React.createElement('th', { className: 'px-4 py-3 text-left font-semibold' }, 'Level'),
-                                React.createElement('th', { className: 'px-4 py-3 text-center font-semibold w-28' }, 'Aksi')
+                                React.createElement('th', { className: 'px-4 py-3 text-left font-semibold text-xs uppercase tracking-wide' }, 'Nama Usaha'),
+                                React.createElement('th', { className: 'px-4 py-3 text-left font-semibold text-xs uppercase tracking-wide hidden md:table-cell' }, 'Alamat'),
+                                React.createElement('th', { className: 'px-4 py-3 text-left font-semibold text-xs uppercase tracking-wide hidden sm:table-cell' }, 'Platform Online'),
+                                React.createElement('th', { className: 'px-4 py-3 text-center font-semibold text-xs uppercase tracking-wide w-16' }, 'Skor'),
+                                React.createElement('th', { className: 'px-4 py-3 text-left font-semibold text-xs uppercase tracking-wide' }, 'Sinyal Digital'),
+                                React.createElement('th', { className: 'px-4 py-3 text-center font-semibold text-xs uppercase tracking-wide w-28' }, 'Aksi')
                             )
                         ),
                         React.createElement('tbody', null,
                             filteredBusinesses.length === 0
                                 ? React.createElement('tr', null,
-                                    React.createElement('td', { colSpan: 7, className: 'px-4 py-16 text-center text-slate-400' },
-                                        businesses.length === 0
-                                            ? React.createElement('div', { className: 'space-y-2' },
-                                                React.createElement('p', { className: 'font-medium' }, 'Belum ada usaha tersimpan.'),
-                                                React.createElement('p', { className: 'text-xs' }, 'Tekan "+ Tambah Usaha" untuk menambahkan usaha baru.')
-                                              )
-                                            : `Tidak ada usaha yang cocok dengan "${daftarSearch}".`
+                                    React.createElement('td', { colSpan: 6, className: 'px-4' },
+                                        React.createElement(EmptyState, businesses.length === 0
+                                            ? { title: 'Belum ada usaha tersimpan', description: 'Tekan "+ Tambah Usaha" di atas untuk menambahkan usaha pertama Anda.' }
+                                            : { title: 'Tidak ditemukan', description: `Tidak ada usaha yang cocok dengan "${daftarSearch}".` })
                                     )
                                 )
                                 : filteredBusinesses.map((b, idx) => {
@@ -1226,7 +1372,7 @@ const DaftarUsahaPage = () => {
                                     ].filter(Boolean);
                                     return React.createElement('tr', {
                                         key: `${b.id}-${idx}`,
-                                        className: 'border-t border-slate-100 hover:bg-slate-50 transition',
+                                        className: 'border-t border-slate-100 hover:bg-[var(--navy-50)]/60 transition',
                                     },
                                         React.createElement('td', { className: 'px-4 py-3 font-medium text-slate-900' }, b.name),
                                         React.createElement('td', { className: 'px-4 py-3 text-slate-500 hidden md:table-cell max-w-[200px] truncate' }, b.address || '—'),
@@ -1234,23 +1380,24 @@ const DaftarUsahaPage = () => {
                                             platforms.length > 0
                                                 ? React.createElement('div', { className: 'flex flex-wrap gap-1' },
                                                     platforms.map((p) =>
-                                                        React.createElement('span', { key: p, className: 'inline-block rounded-full bg-sky-50 border border-sky-200 text-sky-700 text-xs px-2 py-0.5 font-medium' }, p)
+                                                        React.createElement('span', { key: p, className: 'inline-block rounded-full bg-[var(--navy-50)] border border-[var(--navy-100)] text-[var(--navy-700)] text-xs px-2 py-0.5 font-medium' }, p)
                                                     )
                                                 )
                                                 : React.createElement('span', { className: 'text-slate-400 text-xs' }, 'Tidak ada')
                                         ),
-                                        React.createElement('td', { className: 'px-4 py-3 text-center tabular-nums font-semibold text-sky-700' }, b.digital_score),
+                                        React.createElement('td', { className: 'font-data px-4 py-3 text-center font-semibold text-[var(--navy-800)]' }, b.digital_score),
                                         React.createElement('td', { className: 'px-4 py-3' },
-                                            React.createElement('span', { className: `inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${levelBadgeClass(b.digital_level)}` }, b.digital_level)
+                                            React.createElement('div', { className: 'flex items-center gap-2' },
+                                                React.createElement(SignalBars, { level: b.digital_level, size: 'sm' }),
+                                                React.createElement('span', { className: `inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${levelBadgeClass(b.digital_level)}` }, b.digital_level)
+                                            )
                                         ),
                                         React.createElement('td', { className: 'px-4 py-3' },
                                             React.createElement('div', { className: 'flex justify-center gap-2' },
                                                 React.createElement(ActionIconButton, {
                                                     title: 'Detail',
                                                     onClick: () => setSelectedItem(b),
-                                                    icon: React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 20 20', fill: 'currentColor', className: 'h-4 w-4' },
-                                                        React.createElement('path', { d: 'M10 4.5c-4.1 0-7.3 2.6-8.8 6.3a.75.75 0 000 .74C2.7 15.9 5.9 18.5 10 18.5s7.3-2.6 8.8-6.3a.75.75 0 000-.74C17.3 7.1 14.1 4.5 10 4.5zm0 1.5A5.5 5.5 0 0115.4 10 5.5 5.5 0 014.6 10 5.5 5.5 0 0110 6zm0 2.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5z' })
-                                                    ),
+                                                    icon: Icon.eye(),
                                                 }),
                                                 React.createElement(ActionIconButton, {
                                                     title: 'Edit',
@@ -1259,17 +1406,13 @@ const DaftarUsahaPage = () => {
                                                         setShowModal(true);
                                                     },
                                                     className: 'text-amber-600 hover:text-amber-700 hover:bg-amber-50',
-                                                    icon: React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 20 20', fill: 'currentColor', className: 'h-4 w-4' },
-                                                        React.createElement('path', { d: 'M13.85 3.15a2.5 2.5 0 013.53 3.53l-7.05 7.05a.75.75 0 01-.35.2l-3.5 1.05a.75.75 0 01-.93-.93l1.05-3.5a.75.75 0 01.2-.35l7.05-7.05zM12.44 4.56L4.39 12.61l1.7 1.7 8.05-8.05-1.7-1.7z' })
-                                                    ),
+                                                    icon: Icon.pencil(),
                                                 }),
                                                 React.createElement(ActionIconButton, {
                                                     title: 'Delete',
                                                     onClick: () => setPendingDelete(b),
                                                     className: 'text-rose-600 hover:text-rose-700 hover:bg-rose-50',
-                                                    icon: React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 20 20', fill: 'currentColor', className: 'h-4 w-4' },
-                                                        React.createElement('path', { d: 'M7.5 3.75A1.25 1.25 0 018.75 2.5h2.5a1.25 1.25 0 011.25 1.25V4h3.75a.75.75 0 010 1.5H4.25a.75.75 0 010-1.5H8V3.75zM5.25 6.5h9.5l-.6 9.1a1.75 1.75 0 01-1.74 1.6H7.59a1.75 1.75 0 01-1.74-1.6L5.25 6.5z' })
-                                                    ),
+                                                    icon: Icon.trash(),
                                                 })
                                             )
                                         )
@@ -1282,40 +1425,32 @@ const DaftarUsahaPage = () => {
 
         selectedItem ? React.createElement(DetailModal, { item: selectedItem, onClose: () => setSelectedItem(null) }) : null,
 
-        pendingDelete ? React.createElement('div', { className: 'fixed inset-0 z-[99999] flex items-center justify-center' },
-            React.createElement('div', { className: 'absolute inset-0 bg-slate-950/50', onClick: () => setPendingDelete(null) }),
-            React.createElement('div', { className: 'relative z-[100000] w-full max-w-md mx-4 rounded-[24px] bg-white p-6 shadow-2xl' },
+        pendingDelete ? React.createElement('div', { className: 'font-body fixed inset-0 z-[99999] flex items-center justify-center' },
+            React.createElement('div', { className: 'absolute inset-0 bg-slate-950/50 backdrop-blur-sm', onClick: () => setPendingDelete(null) }),
+            React.createElement('div', { className: 'tjb-fade-in relative z-[100000] w-full max-w-md mx-4 rounded-[24px] bg-white p-6 shadow-2xl' },
                 React.createElement('div', { className: 'flex items-center gap-3' },
-                    React.createElement('div', { className: 'flex h-11 w-11 items-center justify-center rounded-full bg-rose-50 text-rose-600' },
-                        React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 20 20', fill: 'currentColor', className: 'h-5 w-5' },
-                            React.createElement('path', { d: 'M8.5 3.75A1.25 1.25 0 019.75 2.5h.5a1.25 1.25 0 011.25 1.25V4h7.5v-.25A1.25 1.25 0 0119.25 2.5h.5A1.25 1.25 0 0121 3.75V4h2.25a.75.75 0 010 1.5H2.75a.75.75 0 010-1.5H5V3.75zM4.25 7.5h11.5l-.6 9.1a1.75 1.75 0 01-1.74 1.6H6.59a1.75 1.75 0 01-1.74-1.6L4.25 7.5z' })
-                        )
-                    ),
+                    React.createElement('div', { className: 'flex h-11 w-11 items-center justify-center rounded-full bg-rose-50 text-rose-600' }, Icon.warn()),
                     React.createElement('div', null,
-                        React.createElement('h3', { className: 'text-base font-semibold text-slate-950' }, 'Hapus usaha?'),
-                        React.createElement('p', { className: 'text-sm text-slate-500 mt-1' }, `Yakin ingin menghapus "${pendingDelete?.name || 'usaha ini'}"?`) 
+                        React.createElement('h3', { className: 'font-display text-base font-bold text-slate-950' }, 'Hapus usaha?'),
+                        React.createElement('p', { className: 'text-sm text-slate-500 mt-1' }, `Tindakan ini tidak dapat dibatalkan. "${pendingDelete?.name || 'Usaha ini'}" akan dihapus permanen.`)
                     )
                 ),
                 React.createElement('div', { className: 'mt-6 flex justify-end gap-3' },
-                    React.createElement('button', { onClick: () => setPendingDelete(null), className: 'rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50' }, 'Batal'),
-                    React.createElement('button', { onClick: () => pendingDelete && handleDelete(pendingDelete), className: 'rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700' }, 'Hapus')
+                    React.createElement('button', { onClick: () => setPendingDelete(null), className: 'tjb-btn tjb-btn-outline tjb-focusable' }, 'Batal'),
+                    React.createElement('button', { onClick: () => pendingDelete && handleDelete(pendingDelete), className: 'tjb-btn tjb-focusable bg-rose-600 text-white hover:bg-rose-700' }, Icon.trash(), 'Hapus')
                 )
             )
         ) : null,
 
-        showModal ? React.createElement('div', { className: 'fixed inset-0 z-[99999] flex items-center justify-center' },
-            React.createElement('div', { className: 'absolute inset-0 bg-black/40', onClick: closeModal }),
-            React.createElement('div', { className: 'relative z-[100000] w-full max-w-2xl mx-4 bg-white rounded-[28px] shadow-2xl overflow-y-auto max-h-[90vh]' },
+        showModal ? React.createElement('div', { className: 'font-body fixed inset-0 z-[99999] flex items-center justify-center' },
+            React.createElement('div', { className: 'absolute inset-0 bg-slate-950/50 backdrop-blur-sm', onClick: closeModal }),
+            React.createElement('div', { className: 'tjb-fade-in tjb-scroll relative z-[100000] w-full max-w-2xl mx-4 bg-white rounded-[28px] shadow-2xl overflow-y-auto max-h-[90vh]' },
                 React.createElement('div', { className: 'p-6 border-b border-slate-200 flex items-center justify-between' },
                     React.createElement('div', null,
-                        React.createElement('h3', { className: 'text-base font-semibold text-slate-950' }, editingBusiness ? 'Edit Usaha' : 'Tambah Usaha Baru'),
+                        React.createElement('h3', { className: 'font-display text-base font-bold text-slate-950' }, editingBusiness ? 'Edit Usaha' : 'Tambah Usaha Baru'),
                         React.createElement('p', { className: 'text-sm text-slate-500 mt-0.5' }, editingBusiness ? 'Perbarui detail usaha yang sudah tersimpan.' : 'Isi detail usaha untuk menyimpannya ke database.')
                     ),
-                    React.createElement('button', { onClick: closeModal, className: 'rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition' },
-                        React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 20 20', fill: 'currentColor', className: 'w-5 h-5' },
-                            React.createElement('path', { d: 'M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z' })
-                        )
-                    )
+                    React.createElement('button', { onClick: closeModal, 'aria-label': 'Tutup', className: 'tjb-focusable rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition' }, Icon.close('w-5 h-5'))
                 ),
                 React.createElement('div', { className: 'p-6' },
                     React.createElement(BusinessForm, { key: editingBusiness ? `edit-${editingBusiness.id}` : 'create', initial: editingBusiness || {}, onSaved: handleSaved, onCancel: closeModal, mode: editingBusiness ? 'edit' : 'create' })
@@ -1332,12 +1467,13 @@ const ActionIconButton = ({ icon, title, onClick, className }: { icon: React.Rea
         type: 'button',
         title,
         onClick,
-        className: `inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-50 hover:text-slate-900 ${className || ''}`,
+        className: `tjb-focusable inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-50 hover:text-slate-900 ${className || ''}`,
     }, icon);
 
 const App = () => {
     const [page, setPage] = useState<Page>('dashboard');
-    return React.createElement('div', { className: 'min-h-screen bg-slate-50 text-slate-900 antialiased' },
+    return React.createElement('div', { className: 'min-h-screen bg-[var(--canvas)] text-slate-900 antialiased' },
+        React.createElement(InjectDesignTokens, null),
         React.createElement(Navbar, { activePage: page, onNavigate: setPage }),
         page === 'dashboard'
             ? React.createElement(DashboardPage, null)
