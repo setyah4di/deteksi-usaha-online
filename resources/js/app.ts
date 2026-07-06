@@ -637,22 +637,28 @@ const Navbar = ({ activePage, onNavigate }: { activePage: Page; onNavigate: (p: 
         { id: 'dashboard', label: 'Dashboard' },
         { id: 'daftar',    label: 'Daftar Usaha' },
     ];
-    return React.createElement('nav', { className: 'sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-slate-200 shadow-sm' },
-        React.createElement('div', { className: 'mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16' },
-            React.createElement('div', { className: 'flex items-center gap-3' },
-                React.createElement('div', { className: 'flex items-center justify-center w-9 h-9 rounded-xl bg-sky-600' },
-                    React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', fill: 'white', className: 'w-5 h-5' },
-                        React.createElement('path', { fillRule: 'evenodd', d: 'M11.54 22.351l.07.04.028.016a.76.76 0 00.723 0l.028-.015.071-.041a16.975 16.975 0 001.144-.742 19.58 19.58 0 002.683-2.282c1.944-2.003 3.5-4.697 3.5-8.071a6.75 6.75 0 00-13.5 0c0 3.374 1.555 6.068 3.5 8.07a19.576 19.576 0 002.683 2.283 16.975 16.975 0 001.144.742zM12 13.5a2.25 2.25 0 100-4.5 2.25 2.25 0 000 4.5z', clipRule: 'evenodd' })
-                    )
-                ),
-                React.createElement('span', { className: 'text-base font-semibold text-slate-950 hidden sm:block' }, 'Pemetaan Usaha Digital')
+    return React.createElement('nav', { className: 'sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm' },
+        React.createElement('div', { className: 'mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8 flex flex-col gap-4 py-3 lg:flex-row lg:items-center lg:justify-between' },
+            React.createElement('div', { className: 'flex items-center gap-4' },
+                React.createElement('img', {
+                    src: '/logo_bps.png',
+                    alt: 'Logo BPS',
+                    className: 'h-12 w-12 rounded-2xl border border-slate-200 bg-white object-contain p-1 shadow-sm',
+                }),
+                React.createElement('div', { className: 'flex flex-col' },
+                    React.createElement('span', { className: ' font-semibold text-slate-900' }, 'Badan Pusat Statistik'),
+                    React.createElement('span', { className: ' text-slate-700' }, 'Kabupaten Tanjung Jabung Barat')
+                )
             ),
-            React.createElement('div', { className: 'flex items-center gap-1' },
+            React.createElement('div', { className: 'flex flex-wrap items-center justify-end gap-3' },
                 navItems.map(({ id, label }) =>
                     React.createElement('button', {
-                        key: id, onClick: () => onNavigate(id),
-                        className: ['px-4 py-2 rounded-xl text-sm font-medium transition',
-                            activePage === id ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'].join(' '),
+                        key: id,
+                        onClick: () => onNavigate(id),
+                        className: ['rounded-full px-5 py-2.5 text-sm font-semibold transition shadow-sm',
+                            activePage === id
+                                ? 'bg-orange-400 text-white shadow-orange-200'
+                                : 'bg-orange-100 text-orange-800 hover:bg-orange-200'].join(' '),
                     }, label)
                 )
             )
@@ -831,6 +837,19 @@ const DashboardPage = () => {
 
     return React.createElement('div', { className: 'mx-auto max-w-[1320px] px-4 py-8 sm:px-6 lg:px-8 space-y-6' },
 
+        // ── Hero / Banner ──
+        React.createElement('section', { className: 'rounded-b-3xl overflow-hidden' },
+            React.createElement('div', { className: 'px-4' },
+                React.createElement('div', { className: 'mx-auto max-w-[1320px] flex items-center justify-between gap-4' },
+                    React.createElement('div', { className: 'flex-1' },
+                        React.createElement('h1', { className: 'text-xl md:text-2xl lg:text-2xl font-semibold text-slate-900' }, 'Sistem Pemetaan Usaha Digital'),
+                    ),
+                    React.createElement('div', { className: 'text-right hidden sm:block' },
+                    )
+                )
+            )
+        ),
+
         // ── Search bar ──
         React.createElement('div', { className: 'rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-200 space-y-4' },
             React.createElement('h2', { className: 'text-base font-semibold text-slate-950' }, 'Cari Wilayah'),
@@ -851,8 +870,8 @@ const DashboardPage = () => {
                     )
                 ),
                 React.createElement('div', { className: 'flex gap-2' },
-                    React.createElement('button', { onClick: searchLocation, className: 'flex-1 sm:flex-none rounded-xl bg-sky-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700' }, 'Cari Lokasi'),
-                    React.createElement('button', { onClick: searchNearby, className: 'flex-1 sm:flex-none rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-800 transition hover:bg-slate-50' }, 'Cari Usaha Sekitar')
+                    React.createElement('button', { onClick: searchLocation, className: 'flex-1 sm:flex-none rounded-xl bg-orange-100 px-5 py-2.5 text-sm font-semibold text-orange-800 transition hover:bg-orange-200' }, 'Cari Lokasi'),
+                    React.createElement('button', { onClick: searchNearby, className: 'flex-1 sm:flex-none rounded-xl border border-orange-100 bg-white px-5 py-2.5 text-sm font-semibold text-slate-800 transition hover:bg-orange-50' }, 'Cari Usaha Sekitar')
                 )
             ),
             React.createElement('p', { className: 'rounded-xl bg-slate-100 px-4 py-2.5 text-sm text-slate-600' }, statusText)
@@ -1160,7 +1179,7 @@ const DaftarUsahaPage = () => {
                             setEditingBusiness(null);
                             setShowModal(true);
                         },
-                        className: 'shrink-0 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700',
+                        className: 'shrink-0 rounded-xl bg-orange-100 px-4 py-2.5 text-sm font-semibold text-orange-800 transition hover:bg-orange-200',
                     }, '+ Tambah Usaha')
                 )
             ),
