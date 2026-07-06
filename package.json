@@ -9,7 +9,8 @@
     "dependencies": {
         "leaflet": "^1.9.4",
         "react": "^18.3.0",
-        "react-dom": "^18.3.0"
+        "react-dom": "^18.3.0",
+        "xlsx": "^0.18.5"
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.0.0",
