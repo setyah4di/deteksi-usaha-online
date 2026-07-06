@@ -10,7 +10,7 @@ RUN npm run build
 FROM php:8.4-fpm-alpine AS backend
 
 RUN apk add --no-cache \
-    nginx supervisor gettext \
+    nginx supervisor \
     libzip-dev zip unzip git curl \
     icu-dev oniguruma-dev
 
@@ -27,9 +27,10 @@ RUN composer install --optimize-autoloader --no-dev --no-interaction
 RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 755 /var/www/html/storage /var/www/html/bootstrap/cache
 
-COPY docker/nginx.conf.template /etc/nginx/http.d/default.conf.template
+COPY docker/nginx.conf /etc/nginx/http.d/default.conf
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY docker/start.sh /start.sh
 RUN chmod +x /start.sh
 
+EXPOSE 8080
 CMD ["/start.sh"]
