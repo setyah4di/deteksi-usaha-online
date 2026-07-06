@@ -7,7 +7,7 @@ COPY . .
 RUN npm run build
 
 # ===== Stage 2: PHP + Laravel =====
-FROM php:8.3-fpm-alpine AS backend
+FROM php:8.4-fpm-alpine AS backend
 
 RUN apk add --no-cache \
     nginx supervisor \
